@@ -25,7 +25,9 @@
 
 #if defined(WIN32) && defined(USE_TASKBAR)
 
+#if defined(SDL_BACKEND)
 #include "backends/platform/sdl/sdl-window.h"
+#endif // SDL_BACKEND
 
 #include "common/str.h"
 #include "common/taskbar.h"
@@ -34,7 +36,14 @@ struct ITaskbarList3;
 
 class Win32TaskbarManager : public Common::TaskbarManager {
 public:
+#if defined(WIN32_BACKEND)
+	Win32TaskbarManager(HWND window);
+#endif // WIN32_BACKEND
+
+#if defined(SDL_BACKEND)
 	Win32TaskbarManager(SdlWindow *window);
+#endif // SDL_BACKEND
+
 	virtual ~Win32TaskbarManager();
 
 	virtual void setOverlayIcon(const Common::String &name, const Common::String &description);
@@ -46,9 +55,12 @@ public:
 	virtual void clearError();
 
 private:
+#if defined(SDL_BACKEND)
 	SdlWindow *_window;
+#endif // SDL_BACKEND
 
 	ITaskbarList3 *_taskbar;
+	HWND _window;
 
 	// Count handling
 	HICON _icon;

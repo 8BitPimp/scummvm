@@ -83,6 +83,39 @@
 // System.Title property key, values taken from http://msdn.microsoft.com/en-us/library/bb787584.aspx
 const PROPERTYKEY PKEY_Title = { /* fmtid = */ { 0xF29F85E0, 0x4FF9, 0x1068, { 0xAB, 0x91, 0x08, 0x00, 0x2B, 0x27, 0xB3, 0xD9 } }, /* propID = */ 2 };
 
+#if defined(WIN32_BACKEND)
+Win32TaskbarManager::Win32TaskbarManager(HWND window)
+    : _window(window)
+    , _taskbar(NULL)
+    , _count(0)
+    , _icon(NULL)
+{
+	// Do nothing if not running on Windows 7 or later
+	if (!confirmWindowsVersion(10, 0) && !confirmWindowsVersion(6, 1))
+		return;
+
+	CoInitialize(NULL);
+
+	// Try creating instance (on fail, _taskbar will contain NULL)
+	HRESULT hr = CoCreateInstance(CLSID_TaskbarList,
+	                              0,
+	                              CLSCTX_INPROC_SERVER,
+	                              IID_ITaskbarList3,
+	                              reinterpret_cast<void **> (&(_taskbar)));
+
+	if (SUCCEEDED(hr)) {
+		// Initialize taskbar object
+		if (FAILED(_taskbar->HrInit())) {
+			_taskbar->Release();
+			_taskbar = NULL;
+		}
+	} else {
+		warning("[Win32TaskbarManager::init] Cannot create taskbar instance");
+	}
+}
+#endif // WIN32_BACKEND
+
+#if defined(SDL_BACKEND)
 Win32TaskbarManager::Win32TaskbarManager(SdlWindow *window) : _window(window), _taskbar(NULL), _count(0), _icon(NULL) {
 	// Do nothing if not running on Windows 7 or later
 	if (!confirmWindowsVersion(10, 0) && !confirmWindowsVersion(6, 1))
@@ -107,6 +140,7 @@ Win32TaskbarManager::Win32TaskbarManager(SdlWindow *window) : _window(window), _
 		warning("[Win32TaskbarManager::init] Cannot create taskbar instance");
 	}
 }
+#endif // SDL_BACKEND
 
 Win32TaskbarManager::~Win32TaskbarManager() {
 	if (_taskbar)
@@ -427,6 +461,13 @@ LPWSTR Win32TaskbarManager::ansiToUnicode(const char *s) {
 	return NULL;
 }
 
+#if defined(WIN32_BACKEND)
+HWND Win32TaskbarManager::getHwnd() {
+    return _window;
+}
+#endif
+
+#if defined(SDL_BACKEND)
 HWND Win32TaskbarManager::getHwnd() {
 	SDL_SysWMinfo wmi;
 	if (_window->getSDLWMInformation(&wmi)) {
@@ -439,5 +480,6 @@ HWND Win32TaskbarManager::getHwnd() {
 		return NULL;
 	}
 }
+#endif // SDL_BACKEND
 
 #endif
