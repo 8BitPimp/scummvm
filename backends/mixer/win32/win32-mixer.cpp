@@ -335,11 +335,12 @@ void Win32MixerManager::audioProc(void *buffer, size_t bufferSize, void *user) {
 	Win32MixerManager &self = *(Win32MixerManager *)user;
 	int16 *output = (int16 *)buffer;
 	while (bufferSize) {
-		const size_t rendered =
-            self._mixer->mixCallback((byte*)output, bufferSize);
-		assert(rendered <= bufferSize);
-		output += rendered;
-		bufferSize -= rendered;
+		const size_t numSamples =
+			self._mixer->mixCallback((byte *)output, bufferSize);
+		const size_t numBytes = numSamples * sizeof(uint);
+		assert(numBytes <= bufferSize);
+		output += numBytes;
+		bufferSize -= numBytes;
 	}
 }
 
