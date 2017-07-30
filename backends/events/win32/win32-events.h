@@ -7,6 +7,7 @@
 
 class Win32EventSource : public Common::EventSource {
 public:
+	Win32EventSource();
 	virtual ~Win32EventSource(){};
 
 	virtual bool pollEvent(Common::Event &event);
