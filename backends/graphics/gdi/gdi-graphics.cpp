@@ -124,13 +124,13 @@ LRESULT GDIDetail::_windowRedraw() {
 	StretchDIBits(
 		dc,              // hdc
 		0,               // xDst
-		0,               // yDst
+		bih.biHeight-1,  // yDst
 		bih.biWidth,     // nDestWidth
-		bih.biHeight,    // nDestHeight
+		-bih.biHeight,   // nDestHeight
 		0,               // xSrc
-		bih.biHeight,    // ySrc
+		0,               // ySrc
 		bih.biWidth,     // nSrcWidth
-		-bih.biHeight,   // sSrcHeight
+		bih.biHeight,    // sSrcHeight
 		_screen._data,   // lpBits
 		&(_screen._bmp), // lpBitsInfo
 		DIB_RGB_COLORS,  // iUsage
@@ -263,7 +263,10 @@ bool GDIDetail::screenInvalidate() {
 // ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
 
 GDIGraphicsManager::GDIGraphicsManager()
-	: _detail(new GDIDetail) {}
+	: _detail(new GDIDetail) {
+	// clear the palette
+	memset(palette, 0, sizeof(palette));
+}
 
 GDIGraphicsManager::~GDIGraphicsManager() {
 	if (_detail) {
@@ -380,33 +383,61 @@ int16 GDIGraphicsManager::getWidth() {
 }
 
 void GDIGraphicsManager::setPalette(const byte *colors, uint start, uint num) {
-	// empty
-	LOG_CALL();
+	// note: palette entries seem to be passed in as RGB byte triplets.
+	for (uint i = 0; i < num; ++i) {
+		const uint palIndex = start + i;
+		assert(palIndex < 256);
+		// pack RGB triplet
+		uint color = 0;
+		color |= colors[0] << 16;
+		color |= colors[1] << 8;
+		color |= colors[2] << 0;
+		// insert into palette
+		palette[palIndex] = color;
+		colors += 3;
+	}
 }
 
 void GDIGraphicsManager::grabPalette(byte *colors, uint start, uint num) {
-	// empty
-	LOG_CALL();
+	for (uint i = 0; i < num; ++i) {
+		const uint palIndex = start + i;
+		assert(palIndex < 256);
+		// pack RGB triplet
+		const uint color = palette[palIndex];
+		colors[0] |= color >> 16;
+		colors[1] |= color >> 8;
+		colors[2] |= color >> 0;
+		colors += 3;
+	}
 }
 
 void GDIGraphicsManager::copyRectToScreen(const void *buf, int pitch, int x,
 										  int y, int w, int h) {
-	// empty
-	LOG_CALL();
-#if 1
-	const uint *src = (const uint *)buf;
 	GDIDetail::LockInfo lock;
 	if (!_detail->screenLock(&lock)) {
 		return;
 	}
+
 	uint *dst = lock._pixels;
+	const byte *src = (const byte *)buf;
 
-	if (x != 0 || y != 0 || w != 320 || h != 200) {
-		return;
+	const uint width = min(w, lock._width);
+	const uint height = min(h, lock._height);
+
+	// HACK! Note to self: Do clipping you lamer!
+	dst += x + y * lock._pitch;
+
+	for (uint y = 0; y < height; ++y) {
+		memcpy(dst, src, width * 4);
+		// copy row to screen
+		for (uint x = 0; x < width; ++x) {
+			// index palette and write pixel
+			dst[x] = palette[src[x]];
+		}
+		// advance scanlines
+		src += pitch;
+		dst += lock._pitch;
 	}
-
-	memcpy(dst, buf, pitch * h);
-#endif
 }
 
 Graphics::Surface *GDIGraphicsManager::lockScreen() {
@@ -521,8 +552,6 @@ int16 GDIGraphicsManager::getOverlayWidth() {
 }
 
 bool GDIGraphicsManager::showMouse(bool visible) {
-	// empty
-	LOG_CALL();
 	return !visible;
 }
 
@@ -535,7 +564,7 @@ void GDIGraphicsManager::setMouseCursor(const void *buf, uint w, uint h,
 										int hotspotX, int hotspotY,
 										uint32 keycolor, bool dontScale,
 										const Graphics::PixelFormat *format) {
-	// empty
+	// TODO: this is likely the cross cursor!
 //	LOG_CALL();
 }
 
