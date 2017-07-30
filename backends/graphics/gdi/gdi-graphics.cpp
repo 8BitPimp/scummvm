@@ -113,44 +113,32 @@ bool GDIDetail::_screenCreate(uint w, uint h) {
 }
 
 LRESULT GDIDetail::_windowRedraw() {
-#if 1 /* MEMORY LEAK HERE */
 	if (!_screen._data) {
 		// no screen; hand back to default handler
 		return DefWindowProcA(_window, WM_PAINT, 0, 0);
 	}
-	// flip blitted image
-	static const int xFlip = false ? -1 : 1;
-	static const int yFlip = false ? -1 : 1;
 	// blit buffer to screen
 	HDC dc = GetDC(_window);
 	const BITMAPINFOHEADER &bih = _screen._bmp.bmiHeader;
-	// do the bit blit
-
-	//       HDC        hdc,
-	//       int        XDest,
-	//       int        YDest,
-	//       int        nDestWidth,
-	//       int        nDestHeight,
-	//       int        XSrc,
-	//       int        YSrc,
-	//       int        nSrcWidth,
-	//       int        nSrcHeight,
-	// const VOID       *lpBits,
-	// const BITMAPINFO *lpBitsInfo,
-	//       UINT       iUsage,
-	//       DWORD      dwRop
-	StretchDIBits(dc, 0, 0, bih.biWidth * xFlip, bih.biHeight * yFlip, 0,
-				  bih.biHeight, bih.biWidth, -bih.biHeight, _screen._data,
-				  &(_screen._bmp), DIB_RGB_COLORS, SRCCOPY);
+	// blit backbuffer to the screen
+	StretchDIBits(
+		dc,              // hdc
+		0,               // xDst
+		0,               // yDst
+		bih.biWidth,     // nDestWidth
+		bih.biHeight,    // nDestHeight
+		0,               // xSrc
+		bih.biHeight,    // ySrc
+		bih.biWidth,     // nSrcWidth
+		-bih.biHeight,   // sSrcHeight
+		_screen._data,   // lpBits
+		&(_screen._bmp), // lpBitsInfo
+		DIB_RGB_COLORS,  // iUsage
+		SRCCOPY          // dwRop
+	);
 	// finished WM_PAINT
 	ReleaseDC(_window, dc);
 	ValidateRect(_window, NULL);
-#else
-	PAINTSTRUCT ps;
-	ZeroMemory(&ps, sizeof(ps));
-	HDC hdc = BeginPaint(_window, &ps);
-	EndPaint(_window, &ps);
-#endif
 	return 0;
 }
 
@@ -169,7 +157,6 @@ LRESULT CALLBACK GDIDetail::windowEventHandler(HWND hWnd, UINT Msg,
 		// fallthrough
 	}
 	default:
-		//        printf("- %x\n", Msg);
 		return DefWindowProcA(hWnd, Msg, wParam, lParam);
 	}
 }
@@ -180,25 +167,38 @@ bool GDIDetail::windowCreate(uint w, uint h) {
 	static const char *kWndName = "ScummVM";
 	// create window class
 	HINSTANCE hinstance = GetModuleHandle(NULL);
-	WNDCLASSEXA wndClassEx = {sizeof(WNDCLASSEXA),
-							  0, // CS_OWNDC,
-							  windowEventHandler,
-							  0,
-							  0,
-							  hinstance,
-							  NULL,
-							  NULL,
-							  NULL,
-							  NULL,
-							  (LPCSTR)kClassName,
-							  NULL};
+	WNDCLASSEXA wndClassEx = {
+		sizeof(WNDCLASSEXA), // cbSize;
+		0,                   // style;
+		windowEventHandler,  // lpfnWndProc;
+		0,                   // cbClsExtra;
+		0,                   // cbWndExtra;
+		hinstance,           // hInstance;
+		NULL,                // hIcon;
+		NULL,                // hCursor;
+		NULL,                // hbrBackground;
+		NULL,                // lpszMenuName;
+		(LPCSTR)kClassName,  // lpszClassName;
+		NULL                 // hIconSm
+	};
 	if (RegisterClassExA(&wndClassEx) == 0) {
 		return false;
 	}
 	// create window
-	_window = CreateWindowExA(_dwExStyle, kClassName, (LPCSTR)kWndName,
-							  _dwStyle, CW_USEDEFAULT, CW_USEDEFAULT, w, h,
-							  NULL, NULL, hinstance, NULL);
+	_window = CreateWindowExA(
+		_dwExStyle,       // dwExStyle
+		kClassName,       // lpClassName
+		(LPCSTR)kWndName, // lpWindowName
+		_dwStyle,         // dwStyle
+		CW_USEDEFAULT,    // x
+		CW_USEDEFAULT,    // y
+		w,                // nWidth
+		h,                // nHeight
+		NULL,             // hWndParent
+		NULL,             // hMenu
+		hinstance,        // hInstance
+		NULL              // lpParam
+	);
 	if (_window == NULL) {
 		return false;
 	}
