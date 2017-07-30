@@ -37,6 +37,14 @@ static const OSystem::GraphicsMode s_noGraphicsModes[] = {
 
 // ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
 
+namespace {
+template <typename type_t> type_t *ptrShift(type_t *ptr, const uint shift) {
+	return (type_t *)((uintptr_t)ptr + shift);
+}
+} // namespace
+
+// ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
+
 struct GDIDetail {
 
 	struct LockInfo {
@@ -105,6 +113,7 @@ bool GDIDetail::_screenCreate(uint w, uint h) {
 }
 
 LRESULT GDIDetail::_windowRedraw() {
+#if 1 /* MEMORY LEAK HERE */
 	if (!_screen._data) {
 		// no screen; hand back to default handler
 		return DefWindowProcA(_window, WM_PAINT, 0, 0);
@@ -113,15 +122,21 @@ LRESULT GDIDetail::_windowRedraw() {
 	static const int xFlip = false ? -1 : 1;
 	static const int yFlip = false ? -1 : 1;
 	// blit buffer to screen
-	PAINTSTRUCT ps;
-	HDC hdc = BeginPaint(_window, &ps);
+	HDC dc = GetDC(_window);
 	const BITMAPINFOHEADER &bih = _screen._bmp.bmiHeader;
 	// do the bit blit
-	StretchDIBits(hdc, 0, 0, bih.biWidth * xFlip, bih.biHeight * yFlip, 0, 0,
+	StretchDIBits(dc, 0, 0, bih.biWidth * xFlip, bih.biHeight * yFlip, 0, 0,
 				  bih.biWidth, bih.biHeight, _screen._data, &(_screen._bmp),
 				  DIB_RGB_COLORS, SRCCOPY);
 	// finished WM_PAINT
+	ReleaseDC(_window, dc);
+	ValidateRect(_window, NULL);
+#else
+	PAINTSTRUCT ps;
+	ZeroMemory(&ps, sizeof(ps));
+	HDC hdc = BeginPaint(_window, &ps);
 	EndPaint(_window, &ps);
+#endif
 	return 0;
 }
 
@@ -152,7 +167,7 @@ bool GDIDetail::windowCreate(uint w, uint h) {
 	// create window class
 	HINSTANCE hinstance = GetModuleHandle(NULL);
 	WNDCLASSEXA wndClassEx = {sizeof(WNDCLASSEXA),
-							  CS_OWNDC,
+							  0, // CS_OWNDC,
 							  windowEventHandler,
 							  0,
 							  0,
@@ -204,7 +219,7 @@ bool GDIDetail::windowResize(uint w, uint h) {
 	if (AdjustWindowRectEx(&rect, _dwStyle, FALSE, _dwExStyle) == FALSE) {
 		return false;
 	}
-	// XXX: this will move the window by [5,5] pixels
+	// XXX: this will also move the window by some pixels
 	MoveWindow(_window, rect.left, rect.top, rect.right - rect.left,
 			   rect.bottom - rect.top, TRUE);
 	// create a new screen buffer for out window size
@@ -227,7 +242,8 @@ bool GDIDetail::screenLock(LockInfo *info) {
 
 bool GDIDetail::screenInvalidate() {
 	// invalidate entire window
-	return InvalidateRect(_window, NULL, FALSE) != 0;
+	InvalidateRect(_window, NULL, FALSE);
+	return UpdateWindow(_window) == TRUE;
 }
 
 // ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
@@ -245,7 +261,9 @@ GDIGraphicsManager::~GDIGraphicsManager() {
 
 bool GDIGraphicsManager::hasFeature(OSystem::Feature f) {
 	// empty
-	LOG_CALL();
+	warning("has feature(%u)", (uint)f);
+	//    if (f==OSystem::Feature::kFeatureOverlaySupportsAlpha)
+	//        return true;
 	return false;
 }
 
@@ -300,8 +318,8 @@ inline Graphics::PixelFormat GDIGraphicsManager::getScreenFormat() const {
 	// BytesPerPixel,
 	// RBits, GBits, BBits, ABits,
 	// RShift, GShift, BShift, AShift
-	Graphics::PixelFormat format(4, 32, 32, 32, 32, 0, 8, 16, 32);
-	return Graphics::PixelFormat::createFormatCLUT8();
+	Graphics::PixelFormat format(4, 8, 8, 8, 0, 16, 8, 0, 24);
+	return format;
 }
 
 inline Common::List<Graphics::PixelFormat>
@@ -318,7 +336,7 @@ GDIGraphicsManager::getSupportedFormats() const {
 void GDIGraphicsManager::initSize(uint width, uint height,
 								  const Graphics::PixelFormat *format) {
 	LOG_CALL();
-    _detail->windowResize(width, height);
+	_detail->windowResize(width, height);
 }
 
 int GDIGraphicsManager::getScreenChangeID() const {
@@ -361,6 +379,20 @@ void GDIGraphicsManager::copyRectToScreen(const void *buf, int pitch, int x,
 										  int y, int w, int h) {
 	// empty
 	LOG_CALL();
+#if 1
+	const uint *src = (const uint *)buf;
+	GDIDetail::LockInfo lock;
+	if (!_detail->screenLock(&lock)) {
+		return;
+	}
+	uint *dst = lock._pixels;
+
+	if (x != 0 || y != 0 || w != 320 || h != 200) {
+		return;
+	}
+
+	memcpy(dst, buf, pitch * h);
+#endif
 }
 
 Graphics::Surface *GDIGraphicsManager::lockScreen() {
@@ -386,7 +418,7 @@ void GDIGraphicsManager::fillScreen(uint32 col) {
 
 void GDIGraphicsManager::updateScreen() {
 	LOG_CALL();
-    _detail->screenInvalidate();
+	_detail->screenInvalidate();
 }
 
 void GDIGraphicsManager::setShakePos(int shakeOffset) {
@@ -416,12 +448,26 @@ void GDIGraphicsManager::hideOverlay() {
 
 Graphics::PixelFormat GDIGraphicsManager::getOverlayFormat() const {
 	LOG_CALL();
-	return Graphics::PixelFormat();
+	return getScreenFormat();
 }
 
 void GDIGraphicsManager::clearOverlay() {
 	// empty
 	LOG_CALL();
+	GDIDetail::LockInfo info;
+	if (!_detail->screenLock(&info)) {
+		return;
+	}
+	// clear step
+	uint *dst = info._pixels;
+	for (uint y = 0; y < info._height; ++y) {
+		uint *row = dst;
+		for (uint x = 0; x < info._width; ++x) {
+			dst[x] = 0xff212121;
+		}
+		// TODO: make _pitch consistent
+		dst = ptrShift<uint>(dst, info._pitch * sizeof(uint));
+	}
 }
 
 void GDIGraphicsManager::grabOverlay(void *buf, int pitch) {
@@ -431,20 +477,33 @@ void GDIGraphicsManager::grabOverlay(void *buf, int pitch) {
 
 void GDIGraphicsManager::copyRectToOverlay(const void *buf, int pitch, int x,
 										   int y, int w, int h) {
-	// empty
 	LOG_CALL();
+#if 1
+	const uint *src = (const uint *)buf;
+	GDIDetail::LockInfo lock;
+	if (!_detail->screenLock(&lock)) {
+		return;
+	}
+	uint *dst = lock._pixels;
+
+	if (x != 0 || y != 0 || w != 320 || h != 200) {
+		return;
+	}
+
+	memcpy(dst, buf, pitch * h);
+#endif
 }
 
 int16 GDIGraphicsManager::getOverlayHeight() {
 	// empty
 	LOG_CALL();
-    return _detail->screenHeight();
+	return _detail->screenHeight();
 }
 
 int16 GDIGraphicsManager::getOverlayWidth() {
 	// empty
 	LOG_CALL();
-    return _detail->screenWidth();
+	return _detail->screenWidth();
 }
 
 bool GDIGraphicsManager::showMouse(bool visible) {
