@@ -125,9 +125,23 @@ LRESULT GDIDetail::_windowRedraw() {
 	HDC dc = GetDC(_window);
 	const BITMAPINFOHEADER &bih = _screen._bmp.bmiHeader;
 	// do the bit blit
-	StretchDIBits(dc, 0, 0, bih.biWidth * xFlip, bih.biHeight * yFlip, 0, 0,
-				  bih.biWidth, bih.biHeight, _screen._data, &(_screen._bmp),
-				  DIB_RGB_COLORS, SRCCOPY);
+
+	//       HDC        hdc,
+	//       int        XDest,
+	//       int        YDest,
+	//       int        nDestWidth,
+	//       int        nDestHeight,
+	//       int        XSrc,
+	//       int        YSrc,
+	//       int        nSrcWidth,
+	//       int        nSrcHeight,
+	// const VOID       *lpBits,
+	// const BITMAPINFO *lpBitsInfo,
+	//       UINT       iUsage,
+	//       DWORD      dwRop
+	StretchDIBits(dc, 0, 0, bih.biWidth * xFlip, bih.biHeight * yFlip, 0,
+				  bih.biHeight, bih.biWidth, -bih.biHeight, _screen._data,
+				  &(_screen._bmp), DIB_RGB_COLORS, SRCCOPY);
 	// finished WM_PAINT
 	ReleaseDC(_window, dc);
 	ValidateRect(_window, NULL);
@@ -417,7 +431,7 @@ void GDIGraphicsManager::fillScreen(uint32 col) {
 }
 
 void GDIGraphicsManager::updateScreen() {
-	LOG_CALL();
+//	LOG_CALL();
 	_detail->screenInvalidate();
 }
 
@@ -522,7 +536,7 @@ void GDIGraphicsManager::setMouseCursor(const void *buf, uint w, uint h,
 										uint32 keycolor, bool dontScale,
 										const Graphics::PixelFormat *format) {
 	// empty
-	LOG_CALL();
+//	LOG_CALL();
 }
 
 void GDIGraphicsManager::setCursorPalette(const byte *colors, uint start,
