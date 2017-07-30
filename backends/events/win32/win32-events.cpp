@@ -24,5 +24,6 @@ bool Win32EventSource::pollEvent(Common::Event &event) {
 			DispatchMessageA(&msg);
 		}
 	}
-	return true;
+	// no event generated
+	return false;
 }
