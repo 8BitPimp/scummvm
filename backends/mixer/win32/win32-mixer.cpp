@@ -26,6 +26,7 @@
 
 #include "win32-mixer.h"
 
+// check for winmm errors
 #define MMOK(EXP) ((EXP) == MMSYSERR_NOERROR)
 
 enum {
@@ -345,8 +346,14 @@ void Win32MixerManager::audioProc(void *buffer, size_t bufferSize, void *user) {
 }
 
 void Win32MixerManager::init() {
-	const WaveInfo info = {22050, 16, 2, 1024 * 4, Win32MixerManager::audioProc,
-            			   this};
+	const WaveInfo info = {
+		22050,                        // sample rate
+		16,                           // bit depth
+		2,                            // channels
+		1024 * 4,                     // buffer size
+		Win32MixerManager::audioProc, // callback
+		this                          // callback user data
+	};
 	if (!_picoWave.open(info)) {
 		return;
 	}
