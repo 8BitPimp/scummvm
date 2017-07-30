@@ -6,21 +6,35 @@
 namespace {
 struct keyInfo {
 	Common::KeyCode keyCode;
-	char ascii;
+	uint16 ascii;
 };
 keyInfo keyMap[256];
 
 #define MAP(VK, KEYCODE, ASCII)                                                \
 	{                                                                          \
-		keyMap[VK].keyCode = KEYCODE;                                          \
-		keyMap[VK].ascii = ASCII;                                              \
+		keyMap[(VK)].keyCode = (KEYCODE);                                      \
+		keyMap[(VK)].ascii = (ASCII);                                          \
 	}
 
 void keyMapInit() {
 	using namespace Common;
-	MAP(VK_ESCAPE, KEYCODE_ESCAPE, 27);
-	MAP(VK_SPACE, KEYCODE_SPACE, 32);
-	MAP(VK_F5, KEYCODE_F5, 0);
+	MAP(VK_ESCAPE,  KEYCODE_ESCAPE, 27);
+	MAP(VK_SPACE,   KEYCODE_SPACE,  32);
+	MAP(VK_RETURN,  KEYCODE_RETURN, '\n');
+	MAP(VK_UP,      KEYCODE_UP,     0);
+	MAP(VK_DOWN,    KEYCODE_DOWN,   0);
+	MAP(VK_LEFT,    KEYCODE_LEFT,   0);
+	MAP(VK_RIGHT,   KEYCODE_RIGHT,  0);
+	MAP(VK_TAB,     KEYCODE_TAB,    '\t');
+	for (int i = 0; i < 26; ++i) {
+		MAP('A' + i, Common::KeyCode(KEYCODE_a + i), 'a' + i);
+	}
+	for (int i = 0; i < 10; ++i) {
+		MAP('0' + i, Common::KeyCode(KEYCODE_0 + i), '0' + i);
+	}
+	for (int i = 0; i < 12; ++i) {
+		MAP(VK_F1 + i, Common::KeyCode(KEYCODE_F1 + i), ASCII_F1 + i);
+	}
 }
 
 const keyInfo &keyMapLookup(uint vk) {
@@ -118,9 +132,6 @@ bool Win32EventSource::pollEvent(Common::Event &event) {
 	while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
 		// translate virtual key code
 		TranslateMessage(&msg);
-
-		//         if (msg.hwnd==_window) {
-		//         }
 
 		if (handleEvent(msg, event)) {
 			return true;
