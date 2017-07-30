@@ -19,25 +19,42 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  */
+#define FORBIDDEN_SYMBOL_EXCEPTION_setjmp
+#define FORBIDDEN_SYMBOL_EXCEPTION_FILE
+#define FORBIDDEN_SYMBOL_EXCEPTION_stdout
+#define FORBIDDEN_SYMBOL_EXCEPTION_stderr
+#define FORBIDDEN_SYMBOL_EXCEPTION_fprintf
+#define FORBIDDEN_SYMBOL_EXCEPTION_printf
+#define FORBIDDEN_SYMBOL_EXCEPTION_vprintf
+#define FORBIDDEN_SYMBOL_EXCEPTION_vfprintf
+
 
 #include "win32-osystem.h"
 
+//#include <cassert>
+
 #if defined(USE_WIN32_DRIVER)
 
-OSystem *OSystem_WIN32_create() { return new OSystem_WIN32(); }
+OSystem *win32OSystem_create() {
+	// 
+	return new win32OSystem();
+}
 
 int main(int argc, char *argv[]) {
-	g_system = OSystem_WIN32_create();
+	g_system = win32OSystem_create();
 	assert(g_system);
 
 	// Invoke the actual ScummVM main entry point:
 	const int res = scummvm_main(argc, argv);
-	delete (OSystem_WIN32 *)g_system;
+	delete (win32OSystem *)g_system;
 	return res;
 }
 
 #else /* USE_WIN32_DRIVER */
 
-OSystem *OSystem_WIN32_create() { return NULL; }
+OSystem *win32OSystem_create() { 
+    //
+    return NULL;
+}
 
 #endif

@@ -23,33 +23,24 @@
 #ifndef WIN32_OSYSTEM_H
 #define WIN32_OSYSTEM_H
 
-// We use some stdio.h functionality here thus we need to allow some
-// symbols. Alternatively, we could simply allow everything by defining
-// FORBIDDEN_SYMBOL_ALLOW_ALL
-#define FORBIDDEN_SYMBOL_EXCEPTION_FILE
-#define FORBIDDEN_SYMBOL_EXCEPTION_stdout
-#define FORBIDDEN_SYMBOL_EXCEPTION_stderr
-#define FORBIDDEN_SYMBOL_EXCEPTION_fputs
+#if defined(USE_WIN32_DRIVER)
 
 #include "backends/modular-backend.h"
 #include "base/main.h"
 
-#if defined(USE_WIN32_DRIVER)
-
+#include "backends/fs/windows/windows-fs-factory.h"
+#include "backends/graphics/gdi/gdi-graphics.h"
+#include "backends/mixer/win32/win32-mixer.h"
+#include "backends/mutex/win32/win32-mutex.h"
 #include "backends/saves/default/default-saves.h"
 #include "backends/timer/default/default-timer.h"
-//#include "backends/events/default/default-events.h"
-#include "backends/mutex/null/null-mutex.h"
-#include "backends/graphics/gdi/gdi-graphics.h"
-#include "audio/mixer_intern.h"
+
 #include "common/scummsys.h"
-
-#include "backends/fs/windows/windows-fs-factory.h"
-
-class OSystem_WIN32 : public ModularBackend {
+    
+class win32OSystem : public ModularBackend {
 public:
-	OSystem_WIN32();
-	virtual ~OSystem_WIN32();
+	win32OSystem();
+	virtual ~win32OSystem();
 
 	virtual void initBackend();
 
@@ -57,11 +48,12 @@ public:
 
 	virtual uint32 getMillis(bool skipRecord = false);
 	virtual void delayMillis(uint msecs);
-	virtual void getTimeAndDate(TimeDate &t) const {}
+    virtual void getTimeAndDate(::TimeDate &t) const;
 
 	virtual void logMessage(LogMessageType::Type type, const char *message);
 
 protected:
+	Win32MixerManager *_mixerManager;
 	Common::EventSource *_events;
 };
 
