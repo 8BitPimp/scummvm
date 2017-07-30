@@ -935,13 +935,15 @@ endif()
 
 if (ENABLE_WIN32_BACKEND)
 set(WIN32_BACKEND_FILES
+    ${ScummVM_SOURCE_DIR}/backends/platform/win32/win32-main.cpp
+    ${ScummVM_SOURCE_DIR}/backends/mutex/win32/win32-mutex.h
+    ${ScummVM_SOURCE_DIR}/backends/mutex/win32/win32-mutex.cpp
     ${ScummVM_SOURCE_DIR}/backends/events/win32/win32-events.h
     ${ScummVM_SOURCE_DIR}/backends/events/win32/win32-events.cpp
     ${ScummVM_SOURCE_DIR}/backends/graphics/gdi/gdi-graphics.h
     ${ScummVM_SOURCE_DIR}/backends/graphics/gdi/gdi-graphics.cpp
-    ${ScummVM_SOURCE_DIR}/backends/mixer/win32/win32-mixer.cpp
     ${ScummVM_SOURCE_DIR}/backends/mixer/win32/win32-mixer.h
-    ${ScummVM_SOURCE_DIR}/backends/platform/win32/win32-main.cpp
+    ${ScummVM_SOURCE_DIR}/backends/mixer/win32/win32-mixer.cpp
     ${ScummVM_SOURCE_DIR}/backends/platform/win32/win32-osystem.h
     ${ScummVM_SOURCE_DIR}/backends/platform/win32/win32-osystem.cpp
 )
