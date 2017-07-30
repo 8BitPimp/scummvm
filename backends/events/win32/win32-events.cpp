@@ -4,24 +4,31 @@
 #include "win32-events.h"
 
 namespace {
-Common::KeyCode keyMap[256];
+struct keyInfo {
+	Common::KeyCode keyCode;
+	char ascii;
+};
+keyInfo keyMap[256];
 
-#define MAP(FROM, TO)                                                          \
-	{ keyMap[FROM] = TO; }
+#define MAP(VK, KEYCODE, ASCII)                                                \
+	{                                                                          \
+		keyMap[VK].keyCode = KEYCODE;                                          \
+		keyMap[VK].ascii = ASCII;                                              \
+	}
 
 void keyMapInit() {
-    using namespace Common;
-    MAP(VK_ESCAPE, KEYCODE_ESCAPE);
-    MAP(VK_SPACE, KEYCODE_SPACE);
+	using namespace Common;
+	MAP(VK_ESCAPE, KEYCODE_ESCAPE, 27);
+	MAP(VK_SPACE, KEYCODE_SPACE, 32);
+	MAP(VK_F5, KEYCODE_F5, 0);
 }
 
-Common::KeyCode keyMapLookup(uint vk) {
+const keyInfo &keyMapLookup(uint vk) {
 	assert(vk < 256);
 	return keyMap[vk];
 }
 
-template <uint from, uint to>
-uint getBits(const uint in) {
+template <uint from, uint to> uint getBits(const uint in) {
 	return (in & ((1u << to) - 1u)) >> from;
 }
 
@@ -38,7 +45,9 @@ bool on_WM_KEYDOWN(const ::tagMSG &msg, Common::Event &out) {
 	const uint pState = getBits<30, 30>(msg.lParam);
 	out.type = EventType::EVENT_KEYDOWN;
 	const uint vKey = msg.wParam;
-	out.kbd.keycode = keyMapLookup(vKey);
+	const keyInfo &key = keyMapLookup(vKey);
+	out.kbd.keycode = key.keyCode;
+	out.kbd.ascii = key.ascii;
 	return out.kbd.keycode != KEYCODE_INVALID;
 }
 
@@ -46,7 +55,9 @@ bool on_WM_KEYUP(const ::tagMSG &msg, Common::Event &out) {
 	using namespace Common;
 	out.type = EventType::EVENT_KEYUP;
 	const uint vKey = msg.wParam;
-	out.kbd.keycode = keyMapLookup(vKey);
+	const keyInfo &key = keyMapLookup(vKey);
+	out.kbd.keycode = key.keyCode;
+	out.kbd.ascii = key.ascii;
 	return out.kbd.keycode != KEYCODE_INVALID;
 }
 
@@ -81,7 +92,7 @@ Win32EventSource::Win32EventSource() {
 }
 
 bool Win32EventSource::handleEvent(tagMSG &msg, Common::Event &event) {
-	event.synthetic = false;
+	memset(&event, 0, sizeof(event));
 	using namespace Common;
 	switch (msg.message) {
 	case WM_QUIT:
