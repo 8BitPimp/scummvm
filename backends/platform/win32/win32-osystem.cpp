@@ -13,10 +13,9 @@
 
 win32OSystem::win32OSystem()
 	: _events(NULL)
-    , _mixerManager(NULL)
-{
+	, _mixerManager(NULL) {
 	// note: must be created immediately so we can open the config
-    _fsFactory = new WindowsFilesystemFactory();
+	_fsFactory = new WindowsFilesystemFactory();
 }
 
 win32OSystem::~win32OSystem() {
@@ -27,22 +26,25 @@ win32OSystem::~win32OSystem() {
 }
 
 void win32OSystem::initBackend() {
-
 	_mutexManager = new Win32MutexManager();
-
 	_timerManager = new DefaultTimerManager();
-
-	Common::EventSource *events = getDefaultEventSource();
-    _eventManager = new DefaultEventManager(events);
-
 	_savefileManager = new DefaultSaveFileManager();
-
-	_graphicsManager = new GDIGraphicsManager();
-
-    _mixerManager = new Win32MixerManager;
-    _mixerManager->init();
-	_mixer = _mixerManager->getMixer();
-
+	// init graphics
+	{
+		_gdiGraphics = new GDIGraphicsManager();
+		_graphicsManager = _gdiGraphics;
+	}
+	// init events
+	{
+		_events = new Win32EventSource(_gdiGraphics);
+		_eventManager = new DefaultEventManager(_events);
+	}
+	// init audio mixer
+	{
+		_mixerManager = new Win32MixerManager;
+		_mixerManager->init();
+		_mixer = _mixerManager->getMixer();
+	}
 	ModularBackend::initBackend();
 }
 
@@ -64,13 +66,10 @@ void win32OSystem::logMessage(LogMessageType::Type type, const char *message) {
 }
 
 Common::EventSource *win32OSystem::getDefaultEventSource() {
-    if (!_events) {
-        _events = new Win32EventSource();
-    }
-    assert(_events);
-    return _events;
+	assert(_events);
+	return _events;
 }
 
 void win32OSystem::getTimeAndDate(::TimeDate &t) const {
-    // TODO
+	// TODO
 }

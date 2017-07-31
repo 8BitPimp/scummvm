@@ -55,6 +55,8 @@ public:
 protected:
 	Win32MixerManager *_mixerManager;
 	Common::EventSource *_events;
+
+    class GDIGraphicsManager * _gdiGraphics;
 };
 
 #endif // USE_WIN32_DRIVER

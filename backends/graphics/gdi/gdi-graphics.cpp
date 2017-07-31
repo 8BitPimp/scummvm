@@ -56,12 +56,13 @@ struct GDIDetail {
 	GDIDetail()
 		: _window(NULL)
 		, _dwExStyle(WS_EX_APPWINDOW | WS_EX_OVERLAPPEDWINDOW)
-		, _dwStyle(WS_CAPTION | WS_OVERLAPPED) {
+		, _dwStyle(WS_CAPTION | WS_OVERLAPPED)
+		, _scale(1) {
 		ZeroMemory(&_screen, sizeof(_screen));
 	}
 
-	bool windowCreate(uint w, uint h);
-	bool windowResize(uint w, uint h);
+	bool windowCreate(uint w, uint h, uint scale);
+	bool windowResize(uint w, uint h, uint scale);
 	bool screenInvalidate();
 	bool screenLock(LockInfo *out);
 
@@ -71,6 +72,8 @@ struct GDIDetail {
 
 	uint screenHeight() const { return _screen._bmp.bmiHeader.biHeight; }
 
+	uint screenScale() const { return _scale; }
+
 protected:
 	static LRESULT CALLBACK windowEventHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -79,6 +82,8 @@ protected:
 	// create a back buffer of a specific size
 	bool _screenCreate(uint w, uint h);
 
+	// up scale
+	uint _scale;
 	// window handle
 	HWND _window;
 	// window styles used by resizing code
@@ -120,21 +125,31 @@ LRESULT GDIDetail::_windowRedraw() {
 	// blit buffer to screen
 	HDC dc = GetDC(_window);
 	const BITMAPINFOHEADER &bih = _screen._bmp.bmiHeader;
+
+	RECT clientRect;
+	if (!GetClientRect(_window, &clientRect)) {
+		ZeroMemory(&clientRect, sizeof(RECT));
+		clientRect.bottom = bih.biHeight;
+		clientRect.right = bih.biWidth;
+	}
+
+	// SetDIBits(dc, ...)
+
 	// blit backbuffer to the screen
 	StretchDIBits(
-		dc,              // hdc
-		0,               // xDst
-		bih.biHeight-1,  // yDst
-		bih.biWidth,     // nDestWidth
-		-bih.biHeight,   // nDestHeight
-		0,               // xSrc
-		0,               // ySrc
-		bih.biWidth,     // nSrcWidth
-		bih.biHeight,    // sSrcHeight
-		_screen._data,   // lpBits
-		&(_screen._bmp), // lpBitsInfo
-		DIB_RGB_COLORS,  // iUsage
-		SRCCOPY          // dwRop
+		dc,                  // hdc
+		0,                   // xDst
+		clientRect.bottom-1, // yDst
+		clientRect.right,    // nDestWidth
+		-clientRect.bottom,  // nDestHeight
+		0,                   // xSrc
+		0,                   // ySrc
+		bih.biWidth,         // nSrcWidth
+		bih.biHeight,        // sSrcHeight
+		_screen._data,       // lpBits
+		&(_screen._bmp),     // lpBitsInfo
+		DIB_RGB_COLORS,      // iUsage
+		SRCCOPY              // dwRop
 	);
 	// finished WM_PAINT
 	ReleaseDC(_window, dc);
@@ -161,7 +176,7 @@ LRESULT CALLBACK GDIDetail::windowEventHandler(HWND hWnd, UINT Msg,
 	}
 }
 
-bool GDIDetail::windowCreate(uint w, uint h) {
+bool GDIDetail::windowCreate(uint w, uint h, uint scale) {
 	assert(_window == NULL && w && h);
 	static const char *kClassName = "ScummVMClass";
 	static const char *kWndName = "ScummVM";
@@ -192,8 +207,8 @@ bool GDIDetail::windowCreate(uint w, uint h) {
 		_dwStyle,         // dwStyle
 		CW_USEDEFAULT,    // x
 		CW_USEDEFAULT,    // y
-		w,                // nWidth
-		h,                // nHeight
+		32,               // nWidth
+		32,               // nHeight
 		NULL,             // hWndParent
 		NULL,             // hMenu
 		hinstance,        // hInstance
@@ -203,7 +218,7 @@ bool GDIDetail::windowCreate(uint w, uint h) {
 		return false;
 	}
 	// resize window and create the offscreen buffer
-	if (!windowResize(w, h)) {
+	if (!windowResize(w, h, scale)) {
 		return false;
 	}
 	// pass class instance to window user data to that the static window proc
@@ -221,14 +236,16 @@ bool GDIDetail::windowCreate(uint w, uint h) {
 	return true;
 }
 
-bool GDIDetail::windowResize(uint w, uint h) {
+bool GDIDetail::windowResize(uint w, uint h, uint scale) {
 	assert(w && h);
+	// store scale parameter
+	_scale = scale;
 	// get current window rect
 	RECT rect;
 	GetWindowRect(_window, &rect);
 	// adjust to expected client area
-	rect.right = rect.left + w;
-	rect.bottom = rect.top + h;
+	rect.right  = rect.left + (w * scale);
+	rect.bottom = rect.top  + (h * scale);
 	// adjust so rect becomes client area
 	if (AdjustWindowRectEx(&rect, _dwStyle, FALSE, _dwExStyle) == FALSE) {
 		return false;
@@ -259,6 +276,49 @@ bool GDIDetail::screenInvalidate() {
 	InvalidateRect(_window, NULL, FALSE);
 	return UpdateWindow(_window) == TRUE;
 }
+
+// ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
+
+struct BlitBuffer {
+
+	struct BlitInfo {
+		void *inData;
+		uint x, y, w, h;
+		uint pitch;
+		uint *palette;
+	};
+
+	BlitBuffer(uint width, uint height)
+		: _data(new uint[width * height + 1])
+		, _width(width)
+		, _height(height) {
+		assert(_data);
+	}
+
+	~BlitBuffer() {
+		assert(_data);
+		delete[] _data;
+	}
+
+	void clear(uint val) {
+		assert(_data && _width && _height);
+		const uint *end = _data + (_width * _height);
+		uint *ptr = _data;
+		for (; ptr < end; ++ptr) {
+			*ptr = val;
+		}
+	}
+
+	void blit(BlitInfo &info) { /* TODO */ }
+
+	uint width() const { return _width; }
+
+	uint height() const { return _height; }
+
+protected:
+	uint *_data;
+	uint _width, _height;
+};
 
 // ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
 
@@ -311,7 +371,7 @@ bool GDIGraphicsManager::setGraphicsMode(int mode) {
 	LOG_CALL();
 	switch (mode) {
 	case 0:
-		_detail->windowCreate(320, 240);
+		_detail->windowCreate(320, 240, 2);
 		return true;
 	default:
 		warning("%s: invalid mode %s", __FUNCTION__, mode);
@@ -331,11 +391,17 @@ int GDIGraphicsManager::getGraphicsMode() const {
 }
 
 inline Graphics::PixelFormat GDIGraphicsManager::getScreenFormat() const {
-	LOG_CALL();
-	// BytesPerPixel,
-	// RBits, GBits, BBits, ABits,
-	// RShift, GShift, BShift, AShift
-	Graphics::PixelFormat format(4, 8, 8, 8, 0, 16, 8, 0, 24);
+	Graphics::PixelFormat format(
+		4,  // BytesPerPixel
+		8,  // RBits
+		8,  // GBits
+		8,  // BBits
+		0,  // ABits
+		16, // RShift
+		8,  // GShift
+		0,  // BShift
+		24  // AShift
+	);
 	return format;
 }
 
@@ -353,7 +419,7 @@ GDIGraphicsManager::getSupportedFormats() const {
 void GDIGraphicsManager::initSize(uint width, uint height,
 								  const Graphics::PixelFormat *format) {
 	LOG_CALL();
-	_detail->windowResize(width, height);
+	_detail->windowResize(width, height, 2);
 }
 
 int GDIGraphicsManager::getScreenChangeID() const {
@@ -428,7 +494,6 @@ void GDIGraphicsManager::copyRectToScreen(const void *buf, int pitch, int x,
 	dst += x + y * lock._pitch;
 
 	for (uint y = 0; y < height; ++y) {
-		memcpy(dst, src, width * 4);
 		// copy row to screen
 		for (uint x = 0; x < width; ++x) {
 			// index palette and write pixel
@@ -522,21 +587,30 @@ void GDIGraphicsManager::grabOverlay(void *buf, int pitch) {
 
 void GDIGraphicsManager::copyRectToOverlay(const void *buf, int pitch, int x,
 										   int y, int w, int h) {
-	LOG_CALL();
-#if 1
-	const uint *src = (const uint *)buf;
 	GDIDetail::LockInfo lock;
 	if (!_detail->screenLock(&lock)) {
 		return;
 	}
+
 	uint *dst = lock._pixels;
+	const uint32 *src = (const uint *)buf;
 
-	if (x != 0 || y != 0 || w != 320 || h != 200) {
-		return;
+	const uint width = min(w, lock._width);
+	const uint height = min(h, lock._height);
+
+	// HACK! Note to self: Do clipping you lamer!
+	dst += x + y * lock._pitch;
+
+	for (uint y = 0; y < height; ++y) {
+		// copy row to screen
+		for (uint x = 0; x < width; ++x) {
+			// index palette and write pixel
+			dst[x] = src[x];
+		}
+		// advance scanlines
+		src = ptrShift(src, pitch);
+		dst += lock._pitch;
 	}
-
-	memcpy(dst, buf, pitch * h);
-#endif
 }
 
 int16 GDIGraphicsManager::getOverlayHeight() {
@@ -572,4 +646,8 @@ void GDIGraphicsManager::setCursorPalette(const byte *colors, uint start,
 										  uint num) {
 	// empty
 	LOG_CALL();
+}
+
+uint GDIGraphicsManager::getScale() const {
+    return _detail->screenScale();
 }

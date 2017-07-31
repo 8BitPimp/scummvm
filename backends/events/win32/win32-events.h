@@ -7,12 +7,13 @@
 
 class Win32EventSource : public Common::EventSource {
 public:
-	Win32EventSource();
+	Win32EventSource(class GDIGraphicsManager *window);
 	virtual ~Win32EventSource(){};
 
 	virtual bool pollEvent(Common::Event &event);
 
 protected:
+	class GDIGraphicsManager *_window;
 	bool handleEvent(struct tagMSG &msg, Common::Event &event);
 };
 

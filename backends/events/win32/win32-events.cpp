@@ -2,6 +2,7 @@
 #include <Windows.h>
 
 #include "win32-events.h"
+#include "backends/graphics/gdi/gdi-graphics.h"
 
 namespace {
 struct keyInfo {
@@ -75,52 +76,56 @@ bool on_WM_KEYUP(const ::tagMSG &msg, Common::Event &out) {
 	return out.kbd.keycode != KEYCODE_INVALID;
 }
 
-bool on_WM_MOUSEMOVE(const ::tagMSG &msg, Common::Event &out) {
+bool on_WM_MOUSEMOVE(const ::tagMSG &msg, Common::Event &out, uint scale) {
 	using namespace Common;
 	out.type = EventType::EVENT_MOUSEMOVE;
-	out.mouse.x = short(msg.lParam & 0xffffu);
-	out.mouse.y = short(msg.lParam >> 16);
+	out.mouse.x = short(msg.lParam & 0xffffu) / scale;
+	out.mouse.y = short(msg.lParam >> 16) / scale;
 	return true;
 }
 
-bool on_WM_LBUTTONDOWN(const ::tagMSG &msg, Common::Event &out) {
+bool on_WM_LBUTTONDOWN(const ::tagMSG &msg, Common::Event &out, uint scale) {
 	using namespace Common;
 	out.type = EventType::EVENT_LBUTTONDOWN;
-	out.mouse.x = short(msg.lParam & 0xffffu);
-	out.mouse.y = short(msg.lParam >> 16);
+	out.mouse.x = short(msg.lParam & 0xffffu) / scale;
+	out.mouse.y = short(msg.lParam >> 16) / scale;
 	return true;
 }
 
-bool on_WM_RBUTTONDOWN(const ::tagMSG &msg, Common::Event &out) {
+bool on_WM_RBUTTONDOWN(const ::tagMSG &msg, Common::Event &out, uint scale) {
 	using namespace Common;
 	out.type = EventType::EVENT_RBUTTONDOWN;
-	out.mouse.x = short(msg.lParam & 0xffffu);
-	out.mouse.y = short(msg.lParam >> 16);
+	out.mouse.x = short(msg.lParam & 0xffffu) / scale;
+	out.mouse.y = short(msg.lParam >> 16) / scale;
 	return true;
 }
 } // namespace
 
-Win32EventSource::Win32EventSource() {
+Win32EventSource::Win32EventSource(class GDIGraphicsManager *window)
+	: _window(window) {
 	// generate windows VK code to ScummVM key code table
 	keyMapInit();
 }
 
 bool Win32EventSource::handleEvent(tagMSG &msg, Common::Event &event) {
-	memset(&event, 0, sizeof(event));
 	using namespace Common;
+	memset(&event, 0, sizeof(event));
+	// get the window scale for mouse scaling
+	const uint wndScale = this->_window->getScale();
+	assert(wndScale >= 1);
 	switch (msg.message) {
 	case WM_QUIT:
 		return on_WM_QUIT(msg, event);
 	case WM_MOUSEMOVE:
-		return on_WM_MOUSEMOVE(msg, event);
+		return on_WM_MOUSEMOVE(msg, event, wndScale);
 	case WM_KEYDOWN:
 		return on_WM_KEYDOWN(msg, event);
 	case WM_KEYUP:
 		return on_WM_KEYUP(msg, event);
 	case WM_LBUTTONDOWN:
-		return on_WM_LBUTTONDOWN(msg, event);
+		return on_WM_LBUTTONDOWN(msg, event, wndScale);
 	case WM_RBUTTONDOWN:
-		return on_WM_RBUTTONDOWN(msg, event);
+		return on_WM_RBUTTONDOWN(msg, event, wndScale);
 	default:
 		event.type = EventType::EVENT_INVALID;
 		return false;
