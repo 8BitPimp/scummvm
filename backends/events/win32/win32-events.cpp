@@ -19,14 +19,15 @@ keyInfo keyMap[256];
 
 void keyMapInit() {
 	using namespace Common;
-	MAP(VK_ESCAPE,  KEYCODE_ESCAPE, 27);
-	MAP(VK_SPACE,   KEYCODE_SPACE,  32);
-	MAP(VK_RETURN,  KEYCODE_RETURN, '\n');
-	MAP(VK_UP,      KEYCODE_UP,     0);
-	MAP(VK_DOWN,    KEYCODE_DOWN,   0);
-	MAP(VK_LEFT,    KEYCODE_LEFT,   0);
-	MAP(VK_RIGHT,   KEYCODE_RIGHT,  0);
-	MAP(VK_TAB,     KEYCODE_TAB,    '\t');
+	MAP(VK_ESCAPE,  KEYCODE_ESCAPE,    ASCII_ESCAPE);
+	MAP(VK_SPACE,   KEYCODE_SPACE,     ASCII_SPACE);
+	MAP(VK_RETURN,  KEYCODE_RETURN,    ASCII_RETURN);
+	MAP(VK_UP,      KEYCODE_UP,        0);
+	MAP(VK_DOWN,    KEYCODE_DOWN,      0);
+	MAP(VK_LEFT,    KEYCODE_LEFT,      0);
+	MAP(VK_RIGHT,   KEYCODE_RIGHT,     0);
+	MAP(VK_TAB,     KEYCODE_TAB,       ASCII_TAB);
+	MAP(VK_BACK,    KEYCODE_BACKSPACE, ASCII_BACKSPACE);
 	for (int i = 0; i < 26; ++i) {
 		MAP('A' + i, Common::KeyCode(KEYCODE_a + i), 'a' + i);
 	}
@@ -76,25 +77,27 @@ bool on_WM_KEYUP(const ::tagMSG &msg, Common::Event &out) {
 	return out.kbd.keycode != KEYCODE_INVALID;
 }
 
-bool on_WM_MOUSEMOVE(const ::tagMSG &msg, Common::Event &out, uint scale) {
+bool on_WM_MOUSE_X(const ::tagMSG &msg, Common::Event &out, uint scale) {
 	using namespace Common;
-	out.type = EventType::EVENT_MOUSEMOVE;
-	out.mouse.x = short(msg.lParam & 0xffffu) / scale;
-	out.mouse.y = short(msg.lParam >> 16) / scale;
-	return true;
-}
-
-bool on_WM_LBUTTONDOWN(const ::tagMSG &msg, Common::Event &out, uint scale) {
-	using namespace Common;
-	out.type = EventType::EVENT_LBUTTONDOWN;
-	out.mouse.x = short(msg.lParam & 0xffffu) / scale;
-	out.mouse.y = short(msg.lParam >> 16) / scale;
-	return true;
-}
-
-bool on_WM_RBUTTONDOWN(const ::tagMSG &msg, Common::Event &out, uint scale) {
-	using namespace Common;
-	out.type = EventType::EVENT_RBUTTONDOWN;
+	switch (msg.message) {
+	case WM_MOUSEMOVE:
+		out.type = EventType::EVENT_MOUSEMOVE;
+		break;
+	case WM_LBUTTONDOWN:
+		out.type = EventType::EVENT_LBUTTONDOWN;
+		break;
+	case WM_LBUTTONUP:
+		out.type = EventType::EVENT_LBUTTONUP;
+		break;
+	case WM_RBUTTONDOWN:
+		out.type = EventType::EVENT_RBUTTONDOWN;
+		break;
+	case WM_RBUTTONUP:
+		out.type = EventType::EVENT_RBUTTONUP;
+		break;
+	default:
+		return false;
+	}
 	out.mouse.x = short(msg.lParam & 0xffffu) / scale;
 	out.mouse.y = short(msg.lParam >> 16) / scale;
 	return true;
@@ -116,16 +119,16 @@ bool Win32EventSource::handleEvent(tagMSG &msg, Common::Event &event) {
 	switch (msg.message) {
 	case WM_QUIT:
 		return on_WM_QUIT(msg, event);
-	case WM_MOUSEMOVE:
-		return on_WM_MOUSEMOVE(msg, event, wndScale);
 	case WM_KEYDOWN:
 		return on_WM_KEYDOWN(msg, event);
 	case WM_KEYUP:
 		return on_WM_KEYUP(msg, event);
+	case WM_MOUSEMOVE:
 	case WM_LBUTTONDOWN:
-		return on_WM_LBUTTONDOWN(msg, event, wndScale);
+	case WM_LBUTTONUP:
 	case WM_RBUTTONDOWN:
-		return on_WM_RBUTTONDOWN(msg, event, wndScale);
+	case WM_RBUTTONUP:
+		return on_WM_MOUSE_X(msg, event, wndScale);
 	default:
 		event.type = EventType::EVENT_INVALID;
 		return false;
