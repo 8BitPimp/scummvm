@@ -52,30 +52,38 @@ OSystem::OSystem() {
 }
 
 OSystem::~OSystem() {
-	delete _audiocdManager;
-	_audiocdManager = 0;
-
-	delete _eventManager;
-	_eventManager = 0;
-
-	delete _timerManager;
-	_timerManager = 0;
-
+	if (_audiocdManager) {
+		delete _audiocdManager;
+		_audiocdManager = NULL;
+	}
+	if (_eventManager) {
+		delete _eventManager;
+		_eventManager = NULL;
+	}
+	if (_timerManager) {
+		delete _timerManager;
+		_timerManager = NULL;
+	}
 #if defined(USE_TASKBAR)
-	delete _taskbarManager;
-	_taskbarManager = 0;
+	if (_taskbarManager) {
+		delete _taskbarManager;
+		_taskbarManager = NULL;
+	}
 #endif
-
 #if defined(USE_UPDATES)
-	delete _updateManager;
-	_updateManager = 0;
+	if (_updateManager) {
+		delete _updateManager;
+		_updateManager = NULL;
+	}
 #endif
-
-	delete _savefileManager;
-	_savefileManager = 0;
-
-	delete _fsFactory;
-	_fsFactory = 0;
+	if (_savefileManager) {
+		delete _savefileManager;
+		_savefileManager = NULL;
+	}
+	if (_fsFactory) {
+		delete _fsFactory;
+		_fsFactory = NULL;
+	}
 }
 
 void OSystem::initBackend() {
