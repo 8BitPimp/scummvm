@@ -22,6 +22,8 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#undef min
+#undef max
 
 #include "common/system.h"
 #include "common/config-manager.h"
@@ -35,15 +37,193 @@ static const OSystem::GraphicsMode s_noGraphicsModes[] = {
 	{"320x240x32", "Default Graphics Mode", 0}, //
 	{NULL, NULL, NULL}};
 
-// ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
+enum { SCREEN_GAME = 0, SCREEN_OVERLAY, SCREEN_COUNT__ };
 
-namespace {
-template <typename type_t> type_t *ptrShift(type_t *ptr, const uint shift) {
-	return (type_t *)((uintptr_t)ptr + shift);
+struct Point {
+	int x, y;
+};
+
+struct Rect {
+	int x0, y0;
+	int x1, y1;
+
+	int xMin() const { return min(x0, x1); }
+
+	int xMax() const { return max(x0, x1); }
+
+	int yMin() const { return min(y0, y1); }
+
+	int yMax() const { return max(y0, y1); }
+
+	int dx() const { return xMax() - xMin(); }
+
+	int dy() const { return yMax() - yMin(); }
+
+	static bool notOverlap(const Rect &a, const Rect &b) {
+		return a.xMax() < b.xMin() || a.xMin() > b.xMax() ||
+			   a.yMax() < b.yMin() || a.yMin() > b.yMax();
+	}
+
+	static Rect intersect(const Rect &a, const Rect &b) {
+		const Rect out = {
+			clip(a.xMin(), b.x0, a.xMax()), clip(a.yMin(), b.y0, a.yMax()),
+			clip(a.xMin(), b.x1, a.xMax()), clip(a.yMin(), b.y1, a.yMax())};
+		return out;
+	}
+
+	template <typename type_t>
+	static type_t min(const type_t &a, const type_t &b) {
+		return (a < b) ? a : b;
+	}
+
+	template <typename type_t>
+	static type_t max(const type_t &a, const type_t &b) {
+		return (a > b) ? a : b;
+	}
+
+	template <typename type_t>
+	static type_t clip(const type_t &lo, const type_t &in, const type_t &hi) {
+		return min(hi, (max(lo, in)));
+	}
+};
+
+struct BlitBuffer {
+
+	struct BlitInfo {
+		const void *inData;
+		uint x, y, w, h;
+		uint pitch;
+		const uint *palette;
+	};
+
+	BlitBuffer()
+		: _data(NULL)
+		, _width(0)
+		, _height(0) {}
+
+	BlitBuffer(uint width, uint height)
+		: _data(new uint[width * height + 1])
+		, _width(width)
+		, _height(height) {
+		assert(_data);
+	}
+
+	~BlitBuffer() {
+		if (_data) {
+			delete[] _data;
+		}
+	}
+
+	void clear(uint val) {
+		assert(_data && _width && _height);
+		const uint *end = _data + (_width * _height);
+		for (uint *ptr = _data; ptr < end; ++ptr) {
+			*ptr = val;
+		}
+	}
+
+	void blit(BlitInfo &info) {
+		if (info.palette) {
+			_blit<byte>(info);
+		} else {
+			_blit<uint>(info);
+		}
+	}
+
+	void copyTo(void *vDst, uint pitch, uint height) {
+		const uint cpyPitch = Rect::min(pitch, _width * sizeof(uint));
+		const uint cpyHeight = Rect::min(height, _height);
+		const uint *src = _data;
+		byte *dst = (byte *)vDst;
+		for (uint y = 0; y < cpyHeight; ++y) {
+			memcpy(dst, src, cpyPitch);
+			dst += pitch, src += _width;
+		}
+	}
+
+	uint width() const { return _width; }
+
+	uint height() const { return _height; }
+
+	uint *data() const { return _data; }
+
+	void resize(uint width, uint height) {
+		if (_data) {
+			delete[] _data;
+		}
+		_data = new uint[width * height];
+		_width = width;
+		_height = height;
+	}
+
+protected:
+	template <typename SrcPix> void _blit(BlitInfo &info);
+
+	uint *_data;
+	uint _width, _height;
+};
+
+template <typename SrcPix> void BlitBuffer::_blit(BlitBuffer::BlitInfo &info) {
+	// access helpers
+	const int x = info.x, y = info.y, w = info.w, h = info.h;
+	const uint *palette = info.palette;
+
+	// find clipped rect
+	const Rect dstRect = {x, y, (x + w - 1), (y + h - 1)};
+	const Rect srcRect = {0, 0, (int)_width - 1, (int)_height - 1};
+	if (Rect::notOverlap(dstRect, srcRect)) {
+		// no intersection; no blit required
+		return;
+	}
+	// find intersection region
+	const Rect clipRect = Rect::intersect(srcRect, dstRect);
+
+	// find source start location
+	const Point srcDelta = {clipRect.xMin() - x, clipRect.yMin() - y};
+	assert(srcDelta.x >= 0 && srcDelta.y >= 0);
+	const SrcPix *srcInData = (const SrcPix *)info.inData;
+	const uint srcPitch = info.pitch;
+	const SrcPix *src = srcInData + srcDelta.x + srcDelta.y * srcPitch;
+
+	// find destination start location
+	const uint dstPitch = _width;
+	uint *dst = _data + clipRect.xMin() + (clipRect.yMin() * dstPitch);
+
+	// itteration range
+	const Point diff = {clipRect.dx(), clipRect.dy()};
+
+	// end point for access checking
+	const uint *const dstEnd = _data + _height * _width;
+	assert(dstEnd >= (dst + dstPitch * diff.y + diff.x));
+
+	// vertical loop
+	for (int y = 0; y <= diff.y; ++y) {
+
+		// row itteration pointers
+		const SrcPix *srcRow = src;
+		uint *dstRow = dst;
+
+		// horizontal loop
+		for (int x = 0; x <= diff.x; ++x) {
+
+			// Note: these if statements must be optimized away at compile time
+
+			// 8 bit palettized copy
+			if (sizeof(SrcPix) == 1) {
+				*dstRow = palette[*srcRow];
+			}
+			// 32 bit direct copy
+			if (sizeof(SrcPix) == 4) {
+				*dstRow = *srcRow;
+			}
+			// increment pixel
+			++srcRow, ++dstRow;
+		}
+
+		// increment scanlines
+		src += srcPitch / sizeof(SrcPix), dst += dstPitch;
+	}
 }
-} // namespace
-
-// ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
 
 struct GDIDetail {
 
@@ -57,9 +237,8 @@ struct GDIDetail {
 		: _window(NULL)
 		, _dwExStyle(WS_EX_APPWINDOW | WS_EX_OVERLAPPEDWINDOW)
 		, _dwStyle(WS_CAPTION | WS_OVERLAPPED)
-		, _scale(1) {
-		ZeroMemory(&_screen, sizeof(_screen));
-	}
+		, _scale(1)
+		, _activeScreen(NULL) {}
 
 	bool windowCreate(uint w, uint h, uint scale);
 	bool windowResize(uint w, uint h, uint scale);
@@ -68,11 +247,27 @@ struct GDIDetail {
 
 	HWND windowHandle() const { return _window; }
 
-	uint screenWidth() const { return _screen._bmp.bmiHeader.biWidth; }
+	uint screenWidth() const {
+		assert(_activeScreen);
+		return _activeScreen->width();
+	}
 
-	uint screenHeight() const { return _screen._bmp.bmiHeader.biHeight; }
+	uint screenHeight() const {
+		assert(_activeScreen);
+		return _activeScreen->height();
+	}
 
 	uint screenScale() const { return _scale; }
+
+	void screenActivate(const uint index) {
+		assert(index < SCREEN_COUNT__);
+		_activeScreen = _screenArray + index;
+	}
+
+	BlitBuffer &screen(const uint index) {
+		assert(index < SCREEN_COUNT__);
+		return _screenArray[index];
+	}
 
 protected:
 	static LRESULT CALLBACK windowEventHandler(HWND, UINT, WPARAM, LPARAM);
@@ -82,49 +277,45 @@ protected:
 	// create a back buffer of a specific size
 	bool _screenCreate(uint w, uint h);
 
-	// up scale
+	// up scale ratio
 	uint _scale;
 	// window handle
 	HWND _window;
 	// window styles used by resizing code
 	const DWORD _dwStyle, _dwExStyle;
 	// screen buffer info
-	struct {
-		BITMAPINFO _bmp;
-		uint *_data;
-	} _screen;
+	BITMAPINFO _bmp;
+	BlitBuffer _screenArray[SCREEN_COUNT__];
+	BlitBuffer *_activeScreen;
 };
 
 bool GDIDetail::_screenCreate(uint w, uint h) {
 	assert(w && h);
-	// create screen data
-	if (_screen._data) {
-		delete[] _screen._data;
-		_screen._data = NULL;
+	for (int i = 0; i < SCREEN_COUNT__; ++i) {
+		_screenArray[i].resize(w, h);
 	}
-	_screen._data = new uint[w * h];
-	assert(_screen._data);
+	_activeScreen = _screenArray;
 	// create bitmap info
-	ZeroMemory(&_screen._bmp, sizeof(BITMAPINFO));
-	BITMAPINFOHEADER &b = _screen._bmp.bmiHeader;
-	b.biSize = sizeof(BITMAPINFOHEADER);
-	b.biBitCount = 32;
-	b.biWidth = w;
-	b.biHeight = h;
-	b.biPlanes = 1;
-	b.biCompression = BI_RGB;
+	BITMAPINFOHEADER &bih = _bmp.bmiHeader;
+	ZeroMemory(&_bmp, sizeof(BITMAPINFO));
+	bih.biSize = sizeof(BITMAPINFOHEADER);
+	bih.biBitCount = 32;
+	bih.biWidth = w;
+	bih.biHeight = h;
+	bih.biPlanes = 1;
+	bih.biCompression = BI_RGB;
 	// success
 	return true;
 }
 
 LRESULT GDIDetail::_windowRedraw() {
-	if (!_screen._data) {
+	if (_activeScreen == NULL) {
 		// no screen; hand back to default handler
 		return DefWindowProcA(_window, WM_PAINT, 0, 0);
 	}
 	// blit buffer to screen
 	HDC dc = GetDC(_window);
-	const BITMAPINFOHEADER &bih = _screen._bmp.bmiHeader;
+	const BITMAPINFOHEADER &bih = _bmp.bmiHeader;
 
 	RECT clientRect;
 	if (!GetClientRect(_window, &clientRect)) {
@@ -233,6 +424,8 @@ bool GDIDetail::windowCreate(uint w, uint h, uint scale) {
 	screenInvalidate();
 	// display window
 	ShowWindow(_window, SW_SHOW);
+
+	screenActivate(SCREEN_GAME);
 	return true;
 }
 
@@ -244,8 +437,8 @@ bool GDIDetail::windowResize(uint w, uint h, uint scale) {
 	RECT rect;
 	GetWindowRect(_window, &rect);
 	// adjust to expected client area
-	rect.right  = rect.left + (w * scale);
-	rect.bottom = rect.top  + (h * scale);
+	rect.right = rect.left + (w * scale);
+	rect.bottom = rect.top + (h * scale);
 	// adjust so rect becomes client area
 	if (AdjustWindowRectEx(&rect, _dwStyle, FALSE, _dwExStyle) == FALSE) {
 		return false;
@@ -263,11 +456,11 @@ bool GDIDetail::windowResize(uint w, uint h, uint scale) {
 }
 
 bool GDIDetail::screenLock(LockInfo *info) {
-	assert(info);
-	info->_pixels = _screen._data;
-	info->_width = _screen._bmp.bmiHeader.biWidth;
-	info->_height = _screen._bmp.bmiHeader.biHeight;
-	info->_pitch = _screen._bmp.bmiHeader.biWidth;
+	assert(info && _activeScreen);
+	info->_pixels = _activeScreen->data();
+	info->_width = _activeScreen->width();
+	info->_height = _activeScreen->height();
+	info->_pitch = _activeScreen->width();
 	return info->_pixels != NULL;
 }
 
@@ -277,55 +470,10 @@ bool GDIDetail::screenInvalidate() {
 	return UpdateWindow(_window) == TRUE;
 }
 
-// ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
-
-struct BlitBuffer {
-
-	struct BlitInfo {
-		void *inData;
-		uint x, y, w, h;
-		uint pitch;
-		uint *palette;
-	};
-
-	BlitBuffer(uint width, uint height)
-		: _data(new uint[width * height + 1])
-		, _width(width)
-		, _height(height) {
-		assert(_data);
-	}
-
-	~BlitBuffer() {
-		assert(_data);
-		delete[] _data;
-	}
-
-	void clear(uint val) {
-		assert(_data && _width && _height);
-		const uint *end = _data + (_width * _height);
-		uint *ptr = _data;
-		for (; ptr < end; ++ptr) {
-			*ptr = val;
-		}
-	}
-
-	void blit(BlitInfo &info) { /* TODO */ }
-
-	uint width() const { return _width; }
-
-	uint height() const { return _height; }
-
-protected:
-	uint *_data;
-	uint _width, _height;
-};
-
-// ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
-
 GDIGraphicsManager::GDIGraphicsManager()
 	: _detail(new GDIDetail) {
 	// clear the palette
-	memset(palette, 0, sizeof(palette));
+	memset(_palette, 0, sizeof(_palette));
 }
 
 GDIGraphicsManager::~GDIGraphicsManager() {
@@ -333,11 +481,9 @@ GDIGraphicsManager::~GDIGraphicsManager() {
 		delete _detail;
 		_detail = nullptr;
 	}
-	LOG_CALL();
 }
 
 bool GDIGraphicsManager::hasFeature(OSystem::Feature f) {
-	// empty
 	warning("has feature(%u)", (uint)f);
 	//    if (f==OSystem::Feature::kFeatureOverlaySupportsAlpha)
 	//        return true;
@@ -409,9 +555,6 @@ inline Common::List<Graphics::PixelFormat>
 GDIGraphicsManager::getSupportedFormats() const {
 	LOG_CALL();
 	Common::List<Graphics::PixelFormat> list;
-	// BytesPerPixel,
-	// RBits, GBits, BBits, ABits,
-	// RShift, GShift, BShift, AShift
 	list.push_back(getScreenFormat());
 	return list;
 }
@@ -459,7 +602,7 @@ void GDIGraphicsManager::setPalette(const byte *colors, uint start, uint num) {
 		color |= colors[1] << 8;
 		color |= colors[2] << 0;
 		// insert into palette
-		palette[palIndex] = color;
+		_palette[palIndex] = color;
 		colors += 3;
 	}
 }
@@ -469,7 +612,7 @@ void GDIGraphicsManager::grabPalette(byte *colors, uint start, uint num) {
 		const uint palIndex = start + i;
 		assert(palIndex < 256);
 		// pack RGB triplet
-		const uint color = palette[palIndex];
+		const uint color = _palette[palIndex];
 		colors[0] |= color >> 16;
 		colors[1] |= color >> 8;
 		colors[2] |= color >> 0;
@@ -479,39 +622,27 @@ void GDIGraphicsManager::grabPalette(byte *colors, uint start, uint num) {
 
 void GDIGraphicsManager::copyRectToScreen(const void *buf, int pitch, int x,
 										  int y, int w, int h) {
-	GDIDetail::LockInfo lock;
-	if (!_detail->screenLock(&lock)) {
-		return;
-	}
-
-	uint *dst = lock._pixels;
-	const byte *src = (const byte *)buf;
-
-	const uint width = min(w, lock._width);
-	const uint height = min(h, lock._height);
-
-	// HACK! Note to self: Do clipping you lamer!
-	dst += x + y * lock._pitch;
-
-	for (uint y = 0; y < height; ++y) {
-		// copy row to screen
-		for (uint x = 0; x < width; ++x) {
-			// index palette and write pixel
-			dst[x] = palette[src[x]];
-		}
-		// advance scanlines
-		src += pitch;
-		dst += lock._pitch;
-	}
+	BlitBuffer::BlitInfo info = {
+		buf,         // input buffer
+		(uint)x,     // x start coordinate
+		(uint)y,     // y start coordinate
+		(uint)w,     // copy width
+		(uint)h,     // copy height
+		(uint)pitch, // image pitch in bytes
+		_palette     // byte to uint colour palette
+	};
+	BlitBuffer &bb = _detail->screen(SCREEN_GAME);
+	bb.blit(info);
 }
 
 Graphics::Surface *GDIGraphicsManager::lockScreen() {
-	LOG_CALL();
+	assert(_detail);
+	BlitBuffer &bb = _detail->screen(SCREEN_GAME);
 	GDIDetail::LockInfo lock;
 	if (!_detail->screenLock(&lock)) {
 		return NULL;
 	}
-	_surface.init(lock._width, lock._height, lock._pitch, lock._pixels,
+	_surface.init(bb.width(), bb.height(), bb.width(), bb.data(),
 				  getScreenFormat());
 	return &_surface;
 }
@@ -522,14 +653,11 @@ void GDIGraphicsManager::unlockScreen() {
 }
 
 void GDIGraphicsManager::fillScreen(uint32 col) {
-	// empty
-	LOG_CALL();
+	BlitBuffer &bb = _detail->screen(SCREEN_GAME);
+	bb.clear(col);
 }
 
-void GDIGraphicsManager::updateScreen() {
-//	LOG_CALL();
-	_detail->screenInvalidate();
-}
+void GDIGraphicsManager::updateScreen() { _detail->screenInvalidate(); }
 
 void GDIGraphicsManager::setShakePos(int shakeOffset) {
 	// empty
@@ -547,87 +675,55 @@ void GDIGraphicsManager::clearFocusRectangle() {
 }
 
 void GDIGraphicsManager::showOverlay() {
-	// empty
 	LOG_CALL();
+	_detail->screenActivate(SCREEN_OVERLAY);
 }
 
 void GDIGraphicsManager::hideOverlay() {
-	// empty
 	LOG_CALL();
+	_detail->screenActivate(SCREEN_GAME);
 }
 
 Graphics::PixelFormat GDIGraphicsManager::getOverlayFormat() const {
-	LOG_CALL();
 	return getScreenFormat();
 }
 
 void GDIGraphicsManager::clearOverlay() {
-	// empty
-	LOG_CALL();
-	GDIDetail::LockInfo info;
-	if (!_detail->screenLock(&info)) {
-		return;
-	}
-	// clear step
-	uint *dst = info._pixels;
-	for (uint y = 0; y < info._height; ++y) {
-		uint *row = dst;
-		for (uint x = 0; x < info._width; ++x) {
-			dst[x] = 0xff212121;
-		}
-		// TODO: make _pitch consistent
-		dst = ptrShift<uint>(dst, info._pitch * sizeof(uint));
-	}
+	BlitBuffer &bb = _detail->screen(SCREEN_OVERLAY);
+	bb.clear(0x202020);
 }
 
 void GDIGraphicsManager::grabOverlay(void *buf, int pitch) {
-	// empty
-	LOG_CALL();
+	BlitBuffer &bb = _detail->screen(SCREEN_OVERLAY);
+	bb.copyTo(buf, pitch, bb.height());
 }
 
 void GDIGraphicsManager::copyRectToOverlay(const void *buf, int pitch, int x,
 										   int y, int w, int h) {
-	GDIDetail::LockInfo lock;
-	if (!_detail->screenLock(&lock)) {
-		return;
-	}
-
-	uint *dst = lock._pixels;
-	const uint32 *src = (const uint *)buf;
-
-	const uint width = min(w, lock._width);
-	const uint height = min(h, lock._height);
-
-	// HACK! Note to self: Do clipping you lamer!
-	dst += x + y * lock._pitch;
-
-	for (uint y = 0; y < height; ++y) {
-		// copy row to screen
-		for (uint x = 0; x < width; ++x) {
-			// index palette and write pixel
-			dst[x] = src[x];
-		}
-		// advance scanlines
-		src = ptrShift(src, pitch);
-		dst += lock._pitch;
-	}
+	BlitBuffer::BlitInfo info = {
+		buf,         // input buffer
+		(uint)x,     // x start coordinate
+		(uint)y,     // y start coordinate
+		(uint)w,     // copy width
+		(uint)h,     // copy height
+		(uint)pitch, // image pitch in bytes
+		NULL         // byte to uint colour palette
+	};
+	BlitBuffer &bb = _detail->screen(SCREEN_OVERLAY);
+	bb.blit(info);
 }
 
 int16 GDIGraphicsManager::getOverlayHeight() {
-	// empty
-	LOG_CALL();
-	return _detail->screenHeight();
+	BlitBuffer &bb = _detail->screen(SCREEN_OVERLAY);
+	return bb.height();
 }
 
 int16 GDIGraphicsManager::getOverlayWidth() {
-	// empty
-	LOG_CALL();
-	return _detail->screenWidth();
+	BlitBuffer &bb = _detail->screen(SCREEN_OVERLAY);
+	return bb.width();
 }
 
-bool GDIGraphicsManager::showMouse(bool visible) {
-	return !visible;
-}
+bool GDIGraphicsManager::showMouse(bool visible) { return !visible; }
 
 void GDIGraphicsManager::warpMouse(int x, int y) {
 	// empty
@@ -648,6 +744,4 @@ void GDIGraphicsManager::setCursorPalette(const byte *colors, uint start,
 	LOG_CALL();
 }
 
-uint GDIGraphicsManager::getScale() const {
-    return _detail->screenScale();
-}
+uint GDIGraphicsManager::getScale() const { return _detail->screenScale(); }

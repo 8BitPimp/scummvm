@@ -82,7 +82,7 @@ public:
 protected:
 	Graphics::Surface _surface;
 	struct GDIDetail *_detail;
-	uint palette[256];
+	uint _palette[256];
 };
 
 #endif
