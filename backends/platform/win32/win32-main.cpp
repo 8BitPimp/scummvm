@@ -28,33 +28,26 @@
 #define FORBIDDEN_SYMBOL_EXCEPTION_vprintf
 #define FORBIDDEN_SYMBOL_EXCEPTION_vfprintf
 
-
+#include <cassert>
 #include "win32-osystem.h"
-
-//#include <cassert>
 
 #if defined(USE_WIN32_DRIVER)
 
 OSystem *win32OSystem_create() {
-	// 
 	return new win32OSystem();
 }
 
 int main(int argc, char *argv[]) {
 	g_system = win32OSystem_create();
 	assert(g_system);
-
-	// Invoke the actual ScummVM main entry point:
+	// Invoke the actual ScummVM main entry point
 	const int res = scummvm_main(argc, argv);
 	delete (win32OSystem *)g_system;
 	return res;
 }
 
 #else /* USE_WIN32_DRIVER */
-
 OSystem *win32OSystem_create() { 
-    //
-    return NULL;
+	return NULL;
 }
-
 #endif

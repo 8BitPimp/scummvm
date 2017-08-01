@@ -19,9 +19,26 @@ win32OSystem::win32OSystem()
 }
 
 win32OSystem::~win32OSystem() {
+	if (_mixerManager) {
+		_mixer->stopAll();
+		_mixerManager->shutDown();
+		delete _mixerManager;
+		_mixerManager = NULL;
+	}
 	if (_events) {
 		delete _events;
 		_events = NULL;
+	}
+	// delete this here as it must be destroyed before the mutex manager
+	if (_timerManager) {
+		delete _timerManager;
+		_timerManager = NULL;
+	}
+	if (_gdiGraphics) {
+		delete _gdiGraphics;
+		_gdiGraphics = NULL;
+		// Note: this was done by the modular backend
+		_graphicsManager = NULL;
 	}
 }
 
@@ -41,9 +58,10 @@ void win32OSystem::initBackend() {
 	}
 	// init audio mixer
 	{
+		Audio::MixerImpl *mixImpl = new Audio::MixerImpl(g_system, 22050);
 		_mixerManager = new Win32MixerManager;
-		_mixerManager->init();
-		_mixer = _mixerManager->getMixer();
+		_mixerManager->init(mixImpl);
+		_mixer = mixImpl;
 	}
 	ModularBackend::initBackend();
 }

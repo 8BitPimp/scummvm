@@ -36,7 +36,7 @@
 #include "backends/timer/default/default-timer.h"
 
 #include "common/scummsys.h"
-    
+
 class win32OSystem : public ModularBackend {
 public:
 	win32OSystem();
@@ -48,7 +48,7 @@ public:
 
 	virtual uint32 getMillis(bool skipRecord = false);
 	virtual void delayMillis(uint msecs);
-    virtual void getTimeAndDate(::TimeDate &t) const;
+	virtual void getTimeAndDate(::TimeDate &t) const;
 
 	virtual void logMessage(LogMessageType::Type type, const char *message);
 
@@ -56,7 +56,7 @@ protected:
 	Win32MixerManager *_mixerManager;
 	Common::EventSource *_events;
 
-    class GDIGraphicsManager * _gdiGraphics;
+	class GDIGraphicsManager *_gdiGraphics;
 };
 
 #endif // USE_WIN32_DRIVER

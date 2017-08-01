@@ -27,25 +27,20 @@
 
 class Win32MixerManager {
 public:
+	Win32MixerManager();
 
-    Win32MixerManager();
-    
-    ~Win32MixerManager();
+	~Win32MixerManager();
 
-    virtual void init();
+	void init(Audio::MixerImpl *mixer);
 
-    virtual void shutDown();
-    
-    Audio::Mixer *getMixer() {
-        return (Audio::Mixer *)_mixer;
-    }
+	void shutDown();
 
 protected:
-    // audio callback handler
-    static void audioProc(void * buffer, size_t bufferSize, void *self);
+	// audio callback handler
+	static void audioProc(void *buffer, size_t bufferSize, void *self);
 
-    Audio::MixerImpl *_mixer;
-    struct PicoWave &_picoWave;
+	Audio::MixerImpl *_mixer;
+	struct PicoWave &_picoWave;
 };
 
 #endif

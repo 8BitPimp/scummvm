@@ -278,9 +278,13 @@ bool PicoWave::close() {
 		_waveThread = NULL;
 	}
 	if (_hwo) {
-		if (!MMOK(waveOutClose(_hwo))) {
-			_error = PW_WAVEOUTCLOSE_ERROR;
-			return false;
+		int maxTries = 100;
+		while (!MMOK(waveOutClose(_hwo))) {
+			Sleep(100);
+			if (--maxTries == 0) {
+				_error = PW_WAVEOUTCLOSE_ERROR;
+				break;
+			}
 		}
 		_hwo = NULL;
 	}
@@ -290,12 +294,12 @@ bool PicoWave::close() {
 		}
 		_waveEvent = NULL;
 	}
-	memset(&_wavehdr, 0, sizeof(_wavehdr));
-	memset(&_info, 0, sizeof(_info));
-	// release the raw allocation
 	if (_rawAlloc) {
 		delete[] _rawAlloc;
+		_rawAlloc = NULL;
 	}
+	memset(&_wavehdr, 0, sizeof(_wavehdr));
+	memset(&_info, 0, sizeof(_info));
 	return true;
 }
 
@@ -315,8 +319,6 @@ bool PicoWave::pause() {
 	return true;
 }
 
-// ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
-
 Win32MixerManager::Win32MixerManager()
 	: _mixer(NULL)
 	, _picoWave(*(new PicoWave)) {
@@ -324,9 +326,6 @@ Win32MixerManager::Win32MixerManager()
 }
 
 Win32MixerManager::~Win32MixerManager() {
-	if (_mixer) {
-		delete _mixer;
-	}
 	assert(&_picoWave);
 	delete &_picoWave;
 }
@@ -335,7 +334,8 @@ void Win32MixerManager::audioProc(void *buffer, size_t bufferSize, void *user) {
 	assert(user);
 	Win32MixerManager &self = *(Win32MixerManager *)user;
 	int16 *output = (int16 *)buffer;
-	while (bufferSize) {
+	uint bailout = 100;
+	while (bufferSize && --bailout) {
 		const size_t numSamples =
 			self._mixer->mixCallback((byte *)output, bufferSize);
 		const size_t numBytes = numSamples * sizeof(uint);
@@ -345,9 +345,11 @@ void Win32MixerManager::audioProc(void *buffer, size_t bufferSize, void *user) {
 	}
 }
 
-void Win32MixerManager::init() {
+void Win32MixerManager::init(Audio::MixerImpl *mixer) {
+	assert(mixer);
+	const uint sampleRate = mixer->getOutputRate();
 	const WaveInfo info = {
-		22050,                        // sample rate
+		sampleRate,                   // sample rate
 		16,                           // bit depth
 		2,                            // channels
 		1024 * 4,                     // buffer size
@@ -358,11 +360,11 @@ void Win32MixerManager::init() {
 		return;
 	}
 	// open new mixer device
-	_mixer = new Audio::MixerImpl(g_system, info.sampleRate);
-	assert(_mixer);
+	_mixer = mixer;
 	_mixer->setReady(true);
-	//
 	_picoWave.start();
 }
 
-void Win32MixerManager::shutDown() { _picoWave.close(); }
+void Win32MixerManager::shutDown() {
+	_picoWave.close();
+}
