@@ -17,6 +17,7 @@ foreach(ENGINE IN LISTS ENGINES)
 endforeach(ENGINE)
 OPTION(ENABLE_WIN32_BACKEND "Enable Win32 Backend" ON)
 OPTION(ENABLE_SDL_BACKEND "Enable SDL Backend" OFF)
+OPTION(ENABLE_SCUMM_7_8 "Enable SCUMM V7 and V8 support" ON)
 
 include_directories(${ScummVM_SOURCE_DIR} ${ScummVM_SOURCE_DIR}/engines)
 
@@ -113,6 +114,7 @@ set(SCUMM_FILES
     ${ScummVM_SOURCE_DIR}/engines/scumm/he/script_v70he.cpp
     ${ScummVM_SOURCE_DIR}/engines/scumm/he/sound_he.cpp
     ${ScummVM_SOURCE_DIR}/engines/scumm/he/sound_he.h
+
     ${ScummVM_SOURCE_DIR}/engines/scumm/imuse/imuse.cpp
     ${ScummVM_SOURCE_DIR}/engines/scumm/imuse/imuse.h
     ${ScummVM_SOURCE_DIR}/engines/scumm/imuse/imuse_internal.h
@@ -127,6 +129,7 @@ set(SCUMM_FILES
     ${ScummVM_SOURCE_DIR}/engines/scumm/imuse/sysex.h
     ${ScummVM_SOURCE_DIR}/engines/scumm/imuse/sysex_samnmax.cpp
     ${ScummVM_SOURCE_DIR}/engines/scumm/imuse/sysex_scumm.cpp
+
     ${ScummVM_SOURCE_DIR}/engines/scumm/players/player_ad.cpp
     ${ScummVM_SOURCE_DIR}/engines/scumm/players/player_ad.h
     ${ScummVM_SOURCE_DIR}/engines/scumm/players/player_apple2.cpp
@@ -161,6 +164,7 @@ set(SCUMM_FILES
     ${ScummVM_SOURCE_DIR}/engines/scumm/players/player_v4a.h
     ${ScummVM_SOURCE_DIR}/engines/scumm/players/player_v5m.cpp
     ${ScummVM_SOURCE_DIR}/engines/scumm/players/player_v5m.h
+
     ${ScummVM_SOURCE_DIR}/engines/scumm/actor.cpp
     ${ScummVM_SOURCE_DIR}/engines/scumm/actor.h
     ${ScummVM_SOURCE_DIR}/engines/scumm/actor_he.h
@@ -241,8 +245,57 @@ set(SCUMM_FILES
     ${ScummVM_SOURCE_DIR}/engines/scumm/vars.cpp
     ${ScummVM_SOURCE_DIR}/engines/scumm/verbs.cpp
     ${ScummVM_SOURCE_DIR}/engines/scumm/verbs.h)
-do_source_group(${ScummVM_SOURCE_DIR} "${SCUMM_FILES}")
-add_library(scumm ${SCUMM_FILES})
+
+if (ENABLE_SCUMM_7_8)
+    add_definitions(-DENABLE_SCUMM_7_8)
+set(SCUMM_V7_V8_FILES
+    ${ScummVM_SOURCE_DIR}/engines/scumm/script_v8.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/nut_renderer.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/nut_renderer.h
+
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/channel.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/channel.h
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/codec1.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/codec37.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/codec37.h
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/codec47.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/codec47.h
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/codec47ARM.s
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/imuse_channel.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/saud_channel.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/smush_font.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/smush_font.h
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/smush_mixer.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/smush_mixer.h
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/smush_player.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/smush/smush_player.h
+
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse.h
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse_bndmgr.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse_bndmgr.h
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse_codecs.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse_codecs.h
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse_music.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse_script.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse_sndmgr.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse_sndmgr.h
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse_tables.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse_tables.h
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse_track.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/imuse_digi/dimuse_track.h
+
+    ${ScummVM_SOURCE_DIR}/engines/scumm/insane/insane.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/insane/insane.h
+    ${ScummVM_SOURCE_DIR}/engines/scumm/insane/insane_ben.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/insane/insane_enemy.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/insane/insane_iact.cpp
+    ${ScummVM_SOURCE_DIR}/engines/scumm/insane/insane_scenes.cpp)
+endif()
+
+    do_source_group(${ScummVM_SOURCE_DIR} "${SCUMM_FILES}")
+    do_source_group(${ScummVM_SOURCE_DIR} "${SCUMM_V7_V8_FILES}")
+    add_library(scumm ${SCUMM_FILES} ${SCUMM_V7_V8_FILES})
 endif()
 
 # Libraries
