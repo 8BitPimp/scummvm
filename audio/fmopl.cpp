@@ -45,10 +45,11 @@ namespace ALSA {
 // Config implementation
 
 enum OplEmulator {
-	kAuto = 0,
-	kMame = 1,
-	kDOSBox = 2,
-	kALSA = 3
+	kAuto,
+	kMame,
+	kDOSBox,
+	kALSA,
+	kWin32OPL,
 };
 
 OPL::OPL() {
@@ -65,6 +66,9 @@ const Config::EmulatorDescription Config::_drivers[] = {
 #endif
 #ifdef USE_ALSA
 	{ "alsa", _s("ALSA Direct FM"), kALSA, kFlagOpl2 | kFlagDualOpl2 | kFlagOpl3 },
+#endif
+#ifdef WIN32
+	{ "win32opl", _("Harware FM"), kWin32OPL, kFlagOpl2 | kFlagOpl3 },
 #endif
 	{ 0, 0, 0, 0 }
 };
@@ -181,6 +185,13 @@ OPL *Config::create(DriverId driver, OplType type) {
 #ifdef USE_ALSA
 	case kALSA:
 		return ALSA::create(type);
+#endif
+
+#ifdef WIN32
+	case kWin32OPL: {
+		OPL *CreateWin32OPL(uint);
+		return CreateWin32OPL(type);
+	}
 #endif
 
 	default:
