@@ -68,7 +68,7 @@ const Config::EmulatorDescription Config::_drivers[] = {
 	{ "alsa", _s("ALSA Direct FM"), kALSA, kFlagOpl2 | kFlagDualOpl2 | kFlagOpl3 },
 #endif
 #ifdef WIN32
-	{ "win32opl", _("Harware FM"), kWin32OPL, kFlagOpl2 | kFlagOpl3 },
+	{ "win32opl", _s("Harware FM"), kWin32OPL, kFlagOpl2 | kFlagOpl3 },
 #endif
 	{ 0, 0, 0, 0 }
 };
