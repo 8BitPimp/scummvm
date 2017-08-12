@@ -21,10 +21,10 @@
  */
 #include <Windows.h>
 
-#include <array>
 #include <cassert>
 
 #include "win32-mixer.h"
+#include "common/textconsole.h"
 
 // check for winmm errors
 #define MMOK(EXP) ((EXP) == MMSYSERR_NOERROR)
@@ -49,10 +49,10 @@ typedef void (*WaveProc)(void *buffer,		// audio buffer data pointer
 );
 
 struct WaveInfo {
-	uint32_t sampleRate; // sample rate in hz  (44100, 22050, ...)
-	uint32_t bitDepth;   // bit depth in bits  (16, 8)
-	uint32_t channels;   // number of channels (2, 1)
-	uint32_t bufferSize; // audio buffer size in bytes
+	uint sampleRate; // sample rate in hz  (44100, 22050, ...)
+	uint bitDepth;   // bit depth in bits  (16, 8)
+	uint channels;   // number of channels (2, 1)
+	uint bufferSize; // audio buffer size in bytes
 	WaveProc callback;   // audio rendering callback function
 	void *callbackData;  // user data passed to callback
 };
@@ -77,7 +77,7 @@ struct PicoWave {
 	bool pause();
 	bool close();
 
-	uint32_t lastError() const { return _error; }
+	uint lastError() const { return _error; }
 
 protected:
 	bool _prepare();
@@ -86,17 +86,18 @@ protected:
 	static DWORD WINAPI _threadProc(LPVOID param);
 
 	// internal wave info
-	std::array<WAVEHDR, 4> _wavehdr;
+	static const size_t _wavehdrSize = 4;
+	WAVEHDR _wavehdr[4];
 	HWAVEOUT _hwo;
 	LONG volatile _alive;
 	HANDLE _waveEvent;
 	HANDLE _waveThread;
 	// allocation used for all buffers
-	uint8_t *_rawAlloc;
+	byte *_rawAlloc;
 	// user supplied info
 	WaveInfo _info;
 	// error code
-	uint32_t _error;
+	uint _error;
 };
 
 namespace {
@@ -118,14 +119,15 @@ bool PicoWave::_prepare() {
 	// full buffer amount requested in bytes
 	const size_t numBytes = numSamples * _info.bitDepth / 8;
 	// allocate with room for alignment
-	_rawAlloc = new uint8_t[numBytes + alignment];
+	_rawAlloc = new byte[numBytes + alignment];
 	// align the allocation
-	uint8_t *ptr = (uint8_t *)alignPtr((uintptr_t)_rawAlloc, alignment);
+	byte *ptr = (byte *)alignPtr((uintptr_t)_rawAlloc, alignment);
 	memset(ptr, 0, numBytes);
 	// number of samples for each waveheader
-	const size_t hdrSamples = numBytes / _wavehdr.size();
+	const size_t hdrSamples = numBytes / _wavehdrSize;
 
-	for (WAVEHDR &hdr : _wavehdr) {
+	for (size_t i = 0; i < _wavehdrSize; ++i) {
+		WAVEHDR &hdr = _wavehdr[i];
 		// check alignment holds
 		assert(0 == ((uintptr_t)ptr & (alignment - 1)));
 		// allocate the wave header object
@@ -157,7 +159,9 @@ DWORD WINAPI PicoWave::_threadProc(LPVOID param) {
 		// wait for a wave event
 		const DWORD ret = WaitForSingleObject(self._waveEvent, INFINITE);
 		// poll waveheaders for a free block
-		for (WAVEHDR &hdr : self._wavehdr) {
+
+		for (size_t i = 0; i < self._wavehdrSize; ++i) {
+			WAVEHDR &hdr = self._wavehdr[i];
 			if ((hdr.dwFlags & WHDR_DONE) == 0) {
 				// buffer is not free for use
 				continue;
@@ -207,13 +211,16 @@ bool PicoWave::_validate(const WaveInfo &info) {
 }
 
 bool PicoWave::open(const WaveInfo &info) {
+	warning("PicoWave::open()");
 	// check if already running
 	if (_hwo || _waveThread || _waveEvent) {
 		_error = PW_ALREADY_OPEN;
+		warning("PicoWave::open() already running");
 		return false;
 	}
 	if (_validate(info)) {
 		_error = PW_WAVEINFO_ERROR;
+		warning("PicoWave::open() invalid info");
 		return false;
 	}
 	// mark callback thread as alive
@@ -224,6 +231,7 @@ bool PicoWave::open(const WaveInfo &info) {
 	_waveEvent = CreateEventA(NULL, FALSE, FALSE, NULL);
 	if (_waveEvent == NULL) {
 		_error = PW_CREATEEVENT_ERROR;
+		warning("PicoWave::open() failed to create event");
 		return false;
 	}
 	// prepare output wave format
@@ -241,12 +249,16 @@ bool PicoWave::open(const WaveInfo &info) {
 	if (!MMOK(waveOutOpen(&_hwo, WAVE_MAPPER, &waveformat,
 						  (DWORD_PTR)_waveEvent, NULL, CALLBACK_EVENT))) {
 		_error = PW_WAVEOUTOPEN_ERROR;
+		warning("PicoWave::open() waveOutOpen failed");
 		return false;
 	}
 	// create the wave thread
-	_waveThread = CreateThread(NULL, 0, _threadProc, this, CREATE_SUSPENDED, 0);
+	// MSDN says tid param is optional but call fails on Win98 if not given
+	DWORD tid = 0;
+	_waveThread = CreateThread(NULL, 0, _threadProc, this, CREATE_SUSPENDED, &tid);
 	if (_waveThread == NULL) {
 		_error = PW_CREATETHREAD_ERROR;
+		warning("PicoWave::open() create thread failed");
 		return false;
 	}
 	// prepare waveout for playback
@@ -254,6 +266,7 @@ bool PicoWave::open(const WaveInfo &info) {
 }
 
 bool PicoWave::close() {
+	warning("PicoWave::close()");
 	InterlockedExchange(&_alive, 0);
 	if (_waveThread) {
 		bool hardKill = true;
@@ -347,7 +360,9 @@ void Win32MixerManager::audioProc(void *buffer, size_t bufferSize, void *user) {
 
 void Win32MixerManager::init(Audio::MixerImpl *mixer) {
 	assert(mixer);
+	warning("Win32MixerManager()::init()");
 	const uint sampleRate = mixer->getOutputRate();
+	warning("Sample rate is %u", sampleRate);
 	const WaveInfo info = {
 		sampleRate,                   // sample rate
 		16,                           // bit depth
@@ -357,6 +372,7 @@ void Win32MixerManager::init(Audio::MixerImpl *mixer) {
 		this                          // callback user data
 	};
 	if (!_picoWave.open(info)) {
+		warning("_picoWave.open() failed");
 		return;
 	}
 	// open new mixer device
