@@ -35,7 +35,10 @@ struct MutexHashFunc {
 };
 
 struct Win32MutexDetail {
-	Common::HashMap<OSystem::MutexRef, Win32Mutex *, MutexHashFunc> _hashMap;
+	typedef Common::HashMap<OSystem::MutexRef,
+							Win32Mutex *,
+							MutexHashFunc> HashMap;
+	HashMap _hashMap;
 
 	OSystem::MutexRef createMutex() {
 		// create mutex object
@@ -51,7 +54,7 @@ struct Win32MutexDetail {
 	}
 
 	void lockMutex(OSystem::MutexRef mutex) {
-		auto itt = _hashMap.find(mutex);
+		HashMap::iterator itt = _hashMap.find(mutex);
 		if (itt == _hashMap.end()) {
 			return;
 		}
@@ -69,7 +72,7 @@ struct Win32MutexDetail {
 	}
 
 	void unlockMutex(OSystem::MutexRef mutex) {
-		auto itt = _hashMap.find(mutex);
+		HashMap::iterator itt = _hashMap.find(mutex);
 		if (itt != _hashMap.end()) {
 			Win32Mutex *mux = itt->_value;
 			if (mux && mux->_mutex) {
@@ -79,7 +82,7 @@ struct Win32MutexDetail {
 	}
 
 	void deleteMutex(OSystem::MutexRef mutex) {
-		auto itt = _hashMap.find(mutex);
+		HashMap::iterator itt = _hashMap.find(mutex);
 		if (itt == _hashMap.end()) {
 			return;
 		}
