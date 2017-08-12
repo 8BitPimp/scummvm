@@ -420,9 +420,6 @@ set(SCUMMVM_FILES
     ${ScummVM_SOURCE_DIR}/audio/softsynth/opl/dosbox.h
     ${ScummVM_SOURCE_DIR}/audio/softsynth/opl/mame.cpp
     ${ScummVM_SOURCE_DIR}/audio/softsynth/opl/mame.h
-    ${ScummVM_SOURCE_DIR}/audio/softsynth/opl/nukedopl3.h
-    ${ScummVM_SOURCE_DIR}/audio/softsynth/opl/serial_opl.h
-    ${ScummVM_SOURCE_DIR}/audio/softsynth/opl/zd_dbopl.h
     ${ScummVM_SOURCE_DIR}/audio/softsynth/appleiigs.cpp
     ${ScummVM_SOURCE_DIR}/audio/softsynth/cms.cpp
     ${ScummVM_SOURCE_DIR}/audio/softsynth/cms.h
@@ -467,6 +464,7 @@ set(SCUMMVM_FILES
     ${ScummVM_SOURCE_DIR}/audio/rate.h
     ${ScummVM_SOURCE_DIR}/audio/timestamp.cpp
     ${ScummVM_SOURCE_DIR}/audio/timestamp.h
+    ${ScummVM_SOURCE_DIR}/audio/win32_opl.cpp
     ${ScummVM_SOURCE_DIR}/backends/audiocd/default/default-audiocd.cpp
     ${ScummVM_SOURCE_DIR}/backends/audiocd/default/default-audiocd.h
     ${ScummVM_SOURCE_DIR}/backends/audiocd/sdl/sdl-audiocd.cpp
