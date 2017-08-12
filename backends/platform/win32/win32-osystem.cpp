@@ -10,6 +10,7 @@
 #include "audio/mixer_intern.h"
 #include "backends/events/default/default-events.h"
 #include "backends/events/win32/win32-events.h"
+#include "common/config-manager.h"
 
 win32OSystem::win32OSystem()
 	: _events(NULL)
@@ -58,7 +59,14 @@ void win32OSystem::initBackend() {
 	}
 	// init audio mixer
 	{
-		Audio::MixerImpl *mixImpl = new Audio::MixerImpl(g_system, 22050);
+		// determine the desired output sampling frequency.
+		uint32 samplesPerSec = 0;
+		if (ConfMan.hasKey("output_rate"))
+			samplesPerSec = ConfMan.getInt("output_rate");
+		if (samplesPerSec <= 0)
+			samplesPerSec = 22050;
+		// open the mixing device
+		Audio::MixerImpl *mixImpl = new Audio::MixerImpl(g_system, samplesPerSec);
 		_mixerManager = new Win32MixerManager;
 		_mixerManager->init(mixImpl);
 		_mixer = mixImpl;
