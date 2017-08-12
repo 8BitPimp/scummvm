@@ -32,7 +32,7 @@
 #include "gdi-graphics.h"
 
 #define LOG_CALL()                                                             \
-	{ warning("%s\n", __FUNCTION__); }
+	{ /* warning("%s\n", __FUNCTION__); */ }
 
 static const OSystem::GraphicsMode s_noGraphicsModes[] = {
 	{"320x240x32", "Default Graphics Mode", 0}, //
@@ -343,10 +343,7 @@ struct GDIDetail {
 		, _activeScreen(NULL) {}
 
 	~GDIDetail() {
-		if (_window) {
-			CloseWindow(_window);
-			_window = NULL;
-		}
+		release();
 	}
 
 	bool windowCreate(uint w, uint h, uint scale);
@@ -376,6 +373,13 @@ struct GDIDetail {
 	BlitBuffer &screen(const uint index) {
 		assert(index < SCREEN_COUNT__);
 		return _screenArray[index];
+	}
+
+	void release() {
+		if (_window) {
+			CloseWindow(_window);
+			_window = NULL;
+		}
 	}
 
 	ScummBuffer _scummBuffer;
@@ -482,7 +486,11 @@ LRESULT CALLBACK GDIDetail::windowEventHandler(HWND hWnd, UINT Msg,
 }
 
 bool GDIDetail::windowCreate(uint w, uint h, uint scale) {
-	assert(_window == NULL && w && h);
+	assert(w && h);
+	if (_window) {
+		// resize window and create the offscreen buffer
+		return windowResize(w, h, scale);
+	}
 	static const char *kClassName = "ScummVMClass";
 	static const char *kWndName = "ScummVM";
 	// create window class
@@ -604,7 +612,7 @@ GDIGraphicsManager::~GDIGraphicsManager() {
 }
 
 bool GDIGraphicsManager::hasFeature(OSystem::Feature f) {
-	warning("has feature(%u)", (uint)f);
+	// warning("has feature(%u)", (uint)f);
 	// if (f==OSystem::Feature::kFeatureOverlaySupportsAlpha)
 	//     return true;
 	return false;
@@ -635,6 +643,7 @@ int GDIGraphicsManager::getDefaultGraphicsMode() const {
 
 bool GDIGraphicsManager::setGraphicsMode(int mode) {
 	LOG_CALL();
+//	_detail->release();
 	switch (mode) {
 	case 0:
 		_detail->windowCreate(320, 240, 2);
