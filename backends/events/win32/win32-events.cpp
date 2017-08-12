@@ -3,6 +3,7 @@
 
 #include "win32-events.h"
 #include "backends/graphics/gdi/gdi-graphics.h"
+#include "backends/timer/default/default-timer.h"
 
 namespace {
 struct keyInfo {
@@ -50,7 +51,7 @@ template <uint from, uint to> uint getBits(const uint in) {
 
 bool on_WM_QUIT(const ::tagMSG &msg, Common::Event &out) {
 	using namespace Common;
-	out.type = EventType::EVENT_QUIT;
+	out.type = Common::EVENT_QUIT;
 	return true;
 }
 
@@ -59,7 +60,7 @@ bool on_WM_KEYDOWN(const ::tagMSG &msg, Common::Event &out) {
 	// The previous key state. The value is 1 if the key is down before the
 	// message is sent, or it is zero if the key is up.
 	const uint pState = getBits<30, 30>(msg.lParam);
-	out.type = EventType::EVENT_KEYDOWN;
+	out.type = Common::EVENT_KEYDOWN;
 	const uint vKey = msg.wParam;
 	const keyInfo &key = keyMapLookup(vKey);
 	out.kbd.keycode = key.keyCode;
@@ -69,7 +70,7 @@ bool on_WM_KEYDOWN(const ::tagMSG &msg, Common::Event &out) {
 
 bool on_WM_KEYUP(const ::tagMSG &msg, Common::Event &out) {
 	using namespace Common;
-	out.type = EventType::EVENT_KEYUP;
+	out.type = Common::EVENT_KEYUP;
 	const uint vKey = msg.wParam;
 	const keyInfo &key = keyMapLookup(vKey);
 	out.kbd.keycode = key.keyCode;
@@ -81,19 +82,19 @@ bool on_WM_MOUSE_X(const ::tagMSG &msg, Common::Event &out, uint scale) {
 	using namespace Common;
 	switch (msg.message) {
 	case WM_MOUSEMOVE:
-		out.type = EventType::EVENT_MOUSEMOVE;
+		out.type = Common::EVENT_MOUSEMOVE;
 		break;
 	case WM_LBUTTONDOWN:
-		out.type = EventType::EVENT_LBUTTONDOWN;
+		out.type = Common::EVENT_LBUTTONDOWN;
 		break;
 	case WM_LBUTTONUP:
-		out.type = EventType::EVENT_LBUTTONUP;
+		out.type = Common::EVENT_LBUTTONUP;
 		break;
 	case WM_RBUTTONDOWN:
-		out.type = EventType::EVENT_RBUTTONDOWN;
+		out.type = Common::EVENT_RBUTTONDOWN;
 		break;
 	case WM_RBUTTONUP:
-		out.type = EventType::EVENT_RBUTTONUP;
+		out.type = Common::EVENT_RBUTTONUP;
 		break;
 	default:
 		return false;
@@ -130,7 +131,7 @@ bool Win32EventSource::handleEvent(tagMSG &msg, Common::Event &event) {
 	case WM_RBUTTONUP:
 		return on_WM_MOUSE_X(msg, event, wndScale);
 	default:
-		event.type = EventType::EVENT_INVALID;
+		event.type = Common::EVENT_INVALID;
 		return false;
 	}
 }
@@ -147,6 +148,14 @@ bool Win32EventSource::pollEvent(Common::Event &event) {
 			DispatchMessageA(&msg);
 		}
 	}
+
+	//XXX: this is a little wedged in here, can we clean this up?
+	// call the timer handler reguarly
+	Common::TimerManager *timer = g_system->getTimerManager();
+	assert(timer);
+	DefaultTimerManager * defTimer = static_cast<DefaultTimerManager*>(timer);
+	defTimer->handler();
+
 	// no event generated
 	return false;
 }
