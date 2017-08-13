@@ -93,7 +93,8 @@ public:
 		LINK_PLUGIN(AUTO)
 		LINK_PLUGIN(NULL)
 		#if defined(WIN32) && !defined(_WIN32_WCE) && !defined(__SYMBIAN32__)
-		LINK_PLUGIN(WINDOWS)
+//		XXX: what is this for and how does it normaly even work?
+//		LINK_PLUGIN(WINDOWS)
 		#endif
 		#if defined(USE_ALSA)
 		LINK_PLUGIN(ALSA)
