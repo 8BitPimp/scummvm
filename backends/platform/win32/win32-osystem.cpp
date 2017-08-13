@@ -78,7 +78,18 @@ uint32 win32OSystem::getMillis(bool skipRecord) {
 	return uint32(GetTickCount());
 }
 
-void win32OSystem::delayMillis(uint msecs) { Sleep(msecs); }
+void win32OSystem::delayMillis(uint msecs) {
+	const uint ticks = GetTickCount();
+	for (;;) {
+		/* break if delay time has elapsed */
+		const uint interval = GetTickCount() - ticks;
+		if (interval >= msecs) {
+			break;
+		}
+		/* yield process time slice */
+		Sleep(0);
+	}
+}
 
 void win32OSystem::logMessage(LogMessageType::Type type, const char *message) {
 	FILE *output = 0;
