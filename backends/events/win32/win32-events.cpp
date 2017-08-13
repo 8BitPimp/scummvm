@@ -137,6 +137,15 @@ bool Win32EventSource::handleEvent(tagMSG &msg, Common::Event &event) {
 }
 
 bool Win32EventSource::pollEvent(Common::Event &event) {
+
+	//XXX: this is a little wedged in here, can we clean this up?
+	// call the timer handler reguarly
+	Common::TimerManager *timer = g_system->getTimerManager();
+	assert(timer);
+	DefaultTimerManager *defTimer = static_cast<DefaultTimerManager*>(timer);
+	defTimer->handler();
+
+	// peek event from the process event queue
 	MSG msg;
 	while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
 		// translate virtual key code
@@ -148,13 +157,6 @@ bool Win32EventSource::pollEvent(Common::Event &event) {
 			DispatchMessageA(&msg);
 		}
 	}
-
-	//XXX: this is a little wedged in here, can we clean this up?
-	// call the timer handler reguarly
-	Common::TimerManager *timer = g_system->getTimerManager();
-	assert(timer);
-	DefaultTimerManager * defTimer = static_cast<DefaultTimerManager*>(timer);
-	defTimer->handler();
 
 	// no event generated
 	return false;
