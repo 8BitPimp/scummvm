@@ -4,8 +4,10 @@
 #include <windows.h>
 
 #include "fmopl.h"
+#include "common/config-manager.h"
 #include "common/debug.h"
 #include "common/textconsole.h"
+#include "common/str.h"
 
 // compile with inpout driver support for port access on windows NT and above
 #define USE_INPOUT
@@ -14,10 +16,10 @@
 
 struct OPLDriver {
 
-	OPLDriver(uint type)
+	OPLDriver(uint type, uint port)
 		: _oplType(type)
 		, _oplRegMask((type == OPL::Config::kFlagOpl2) ? 0xff : 0x1ff)
-		, _oplPort(0x220)
+		, _oplPort(port)
 	{
 	}
 
@@ -40,8 +42,8 @@ protected:
 
 struct OPLDriverASM : public OPLDriver {
 
-	OPLDriverASM(uint oplType)
-		: OPLDriver(oplType)
+	OPLDriverASM(uint oplType, uint port)
+		: OPLDriver(oplType, port)
 	{}
 
 	virtual void mute();
@@ -62,6 +64,7 @@ void OPLDriverASM::mute() {
 
 void OPLDriverASM::write(uint reg, uint val) {
 	reg &= _oplRegMask;
+	val &= 0xff;
 	// delay timings come from:
 	//   'SoundBlaster Series - Hardware Programming Guide'
 	_portWrite(_oplPort + 0x8, reg);
@@ -105,7 +108,7 @@ void OPLDriverASM::_portDelay(uint base, uint cycles) {
 	};
 }
 
-static OPLDriver * createOPLDriverASM(uint oplType) {
+static OPLDriver * createOPLDriverASM(uint oplType, uint port) {
 	_OSVERSIONINFOA vers;
 	ZeroMemory(&vers, sizeof(vers));
 	vers.dwOSVersionInfoSize = sizeof(vers);
@@ -116,12 +119,12 @@ static OPLDriver * createOPLDriverASM(uint oplType) {
 	// check for Windows 95/98/Me since port instructions are privelaged for
 	// WinNT and above and cant be used.
 	if (vers.dwPlatformId == 1 && vers.dwMajorVersion == 4) {
-		return new OPLDriverASM(oplType);
+		return new OPLDriverASM(oplType, port);
 	}
 	return NULL;
 }
 #else
-static OPLDriver * createOPLDriverASM(uint) {
+static OPLDriver * createOPLDriverASM(uint, uint) {
 	// dummy; no inline port access compiled
 	return NULL;
 }
@@ -137,8 +140,8 @@ typedef BOOL (_stdcall *InpoutIsDriverOpen)();
 
 struct OPLDriverINPOUT : public OPLDriver {
 
-	OPLDriverINPOUT(uint oplType)
-		: OPLDriver(oplType)
+	OPLDriverINPOUT(uint oplType, uint port)
+		: OPLDriver(oplType, port)
 	{}
 
 	virtual void mute();
@@ -175,8 +178,8 @@ byte OPLDriverINPOUT::read(uint reg) {
 	return _reg[reg];
 }
 
-OPLDriver *CreateOPLDriverINPOUT(uint oplType) {
-	struct OPLDriverINPOUT *oplDriver = new OPLDriverINPOUT(oplType);
+OPLDriver *CreateOPLDriverINPOUT(uint oplType, uint port) {
+	struct OPLDriverINPOUT *oplDriver = new OPLDriverINPOUT(oplType, port);
 	// load inpout driver userspace library
 	HMODULE inpout = LoadLibraryA("inpout32.dll");
 	oplDriver->_inpout = inpout;
@@ -200,7 +203,7 @@ OPLDriver *CreateOPLDriverINPOUT(uint oplType) {
 	return (delete oplDriver), NULL;
 }
 #else
-OPLDriver * CreateOPLDriverINPOUT(uint) {
+OPLDriver * CreateOPLDriverINPOUT(uint, uint) {
 	// dummy; no inpout support compiled
 	return NULL;
 }
@@ -240,22 +243,37 @@ Win32OPL::~Win32OPL() {
 }
 
 bool Win32OPL::init() {
+	// default OPL port
+	uint port = true ? 0x220 : 0x380;
+	// load OPL port from config
+	const char *key = "opl_port";
+	Common::ConfigManager::Domain *dom = ConfMan.getDomain("scummvm");
+	if (dom) {
+		const Common::String confPort = dom->getVal(key);
+		if (!confPort.empty()) {
+			port = strtol(confPort.c_str(), NULL, 16);
+		}
+		else {
+			warning("'%s' not set in config; using default of %x", key, port);
+		}
+	}
+	debug("Win32OPL using port '%s'=%x", key, port);
 	// try to create a direct assembly driver
-	_driver = createOPLDriverASM(_oplType);
+	_driver = createOPLDriverASM(_oplType, port);
 	if (_driver) {
 		debug("using OPLDriverASM");
 		_driver->mute();
 		return true;
 	}
 	// try to create an INPOUT driver
-	_driver = CreateOPLDriverINPOUT(_oplType);
+	_driver = CreateOPLDriverINPOUT(_oplType, port);
 	if (_driver) {
 		debug("using OPLDriverINPOUT");
 		_driver->mute();
 		return true;
 	}
 	// error; unable to access host ports
-	warning("win32_opl device unable to access ports");
+	warning("win32_opl device unable gain port access");
 	return false;
 }
 
@@ -271,16 +289,16 @@ void Win32OPL::write(int a, int v) {
 	}
 	// XXX: fixme (this is a horrible hack >:D)
 	const uint port = min(
-		a - 0x220 /* opl2 */,
-		a - 0x388 /* opl3 */);
-	_driver->write(port, v);
+		uint16(a - 0x220) /* opl2 */,
+		uint16(a - 0x380) /* opl3 */);
+	_driver->write(port, v & 0xff);
 }
 
 byte Win32OPL::read(int a) {
 	// XXX: fixme
 	const uint port = min(
-		a - 0x220 /* opl2 */,
-		a - 0x388 /* opl3 */);
+		uint16(a - 0x220) /* opl2 */,
+		uint16(a - 0x380) /* opl3 */);
 	return _driver ? _driver->read(port) : 0;
 }
 
