@@ -26,31 +26,6 @@
 #define COMMON_MATH_H
 
 #include "common/scummsys.h"
-#ifdef _MSC_VER
-// HACK:
-// intrin.h on MSVC includes setjmp.h, which will fail compiling due to our
-// forbidden symbol colde. Since we also can not assure that defining
-// FORBIDDEN_SYMBOL_EXCEPTION_setjmp and FORBIDDEN_SYMBOL_EXCEPTION_longjmp
-// will actually allow the symbols, since forbidden.h might be included
-// earlier already we need to undefine them here...
-#undef setjmp
-#undef longjmp
-#include <intrin.h>
-// ...and redefine them here so no code can actually use it.
-// This could be resolved by including intrin.h on MSVC in scummsys.h before
-// the forbidden.h include. This might make sense, in case we use MSVC
-// extensions like _BitScanReverse in more places. But for now this hack should
-// be ok...
-#ifndef FORBIDDEN_SYMBOL_EXCEPTION_setjmp
-#undef setjmp
-#define setjmp(a)	FORBIDDEN_SYMBOL_REPLACEMENT
-#endif
-
-#ifndef FORBIDDEN_SYMBOL_EXCEPTION_longjmp
-#undef longjmp
-#define longjmp(a,b)	FORBIDDEN_SYMBOL_REPLACEMENT
-#endif
-#endif
 
 #ifndef FLT_MIN
 	#define FLT_MIN 1E-37
@@ -66,6 +41,47 @@ namespace Common {
 struct Complex {
 	float re, im;
 };
+
+#if defined(_MSC_VER)
+  #if (_MSC_VER <= 1310)
+// Visual C++ 2003 has no intrin.h so we must use these fallbacks
+static inline unsigned char _BitScanReverse(
+	unsigned long * Index,
+	unsigned long Mask) {
+	unsigned long bit = 0x80000000, i = 31;
+	for (;bit; bit >>= 1, --i) {
+		if (bit & Mask) {
+			*Index = i;
+			return 1;
+		}
+	}
+	return 0;
+}
+  #else
+    // HACK:
+    // intrin.h on MSVC includes setjmp.h, which will fail compiling due to our
+    // forbidden symbol colde. Since we also can not assure that defining
+    // FORBIDDEN_SYMBOL_EXCEPTION_setjmp and FORBIDDEN_SYMBOL_EXCEPTION_longjmp
+    // will actually allow the symbols, since forbidden.h might be included
+    // earlier already we need to undefine them here...
+    #undef setjmp
+    #undef longjmp
+    #include <intrin.h>
+    // ...and redefine them here so no code can actually use it.
+    // This could be resolved by including intrin.h on MSVC in scummsys.h before
+    // the forbidden.h include. This might make sense, in case we use MSVC
+    // extensions like _BitScanReverse in more places. But for now this hack should
+    // be ok...
+    #ifndef FORBIDDEN_SYMBOL_EXCEPTION_setjmp
+      #undef setjmp
+      #define setjmp(a) FORBIDDEN_SYMBOL_REPLACEMENT
+    #endif
+    #ifndef FORBIDDEN_SYMBOL_EXCEPTION_longjmp
+      #undef longjmp
+      #define longjmp(a,b) FORBIDDEN_SYMBOL_REPLACEMENT
+    #endif
+  #endif // (_MSC_VER <= 1310)
+#endif // defined(_MSC_VER)
 
 #if GCC_ATLEAST(3, 4)
 inline int intLog2(uint32 v) {
