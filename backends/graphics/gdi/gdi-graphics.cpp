@@ -41,6 +41,10 @@ static const OSystem::GraphicsMode s_noGraphicsModes[] = {
 enum { SCREEN_GAME = 0, SCREEN_OVERLAY, SCREEN_COUNT__ };
 
 struct Point {
+
+	Point() {}
+	Point(int ax, int ay) : x(ax), y(ay) {}
+
 	int x, y;
 };
 
@@ -98,8 +102,11 @@ struct BlitBuffer {
 
 	struct BlitInfo {
 		const void *inData;
-		uint x, y, w, h;
+		int x, y;
+		uint w, h;
 		uint pitch;
+		bool mask;
+		uint maskKey;
 	};
 
 	BlitBuffer()
@@ -148,7 +155,12 @@ struct BlitBuffer {
 	}
 
 	void blit(BlitInfo &info) {
-		_blit<uint>(info);
+		if (info.mask) {
+			_blit<uint, true>(info);
+		}
+		else {
+			_blit<uint, false>(info);
+		}
 	}
 
 	void copyTo(void *vDst, uint pitch, uint height) {
@@ -178,15 +190,18 @@ struct BlitBuffer {
 	}
 
 protected:
-	template <typename SrcPix> void _blit(BlitInfo &info);
+	template <typename SrcPix, bool Masked>
+	void _blit(BlitInfo &info);
 
 	uint *_data;
 	uint _width, _height;
 };
 
-template <typename SrcPix> void BlitBuffer::_blit(BlitBuffer::BlitInfo &info) {
+template <typename SrcPix, bool Masked>
+void BlitBuffer::_blit(BlitBuffer::BlitInfo &info) {
 	// access helpers
 	const int x = info.x, y = info.y, w = info.w, h = info.h;
+	const uint key = info.maskKey;
 	// find clipped rect
 	const Rect dstRect = {x, y, (x + w - 1), (y + h - 1)};
 	const Rect srcRect = {0, 0, (int)_width - 1, (int)_height - 1};
@@ -197,16 +212,16 @@ template <typename SrcPix> void BlitBuffer::_blit(BlitBuffer::BlitInfo &info) {
 	// find intersection region
 	const Rect clipRect = Rect::intersect(srcRect, dstRect);
 	// find source start location
-	const Point srcDelta = {clipRect.xMin() - x, clipRect.yMin() - y};
+	const Point srcDelta = Point(clipRect.xMin() - x, clipRect.yMin() - y);
 	assert(srcDelta.x >= 0 && srcDelta.y >= 0);
 	const SrcPix *srcInData = (const SrcPix *)info.inData;
-	const uint srcPitch = info.pitch;
+	const uint srcPitch = info.pitch / sizeof(SrcPix);
 	const SrcPix *src = srcInData + srcDelta.x + srcDelta.y * srcPitch;
 	// find destination start location
 	const uint dstPitch = _width;
 	uint *dst = _data + clipRect.xMin() + (clipRect.yMin() * dstPitch);
 	// itteration range
-	const Point diff = {clipRect.dx(), clipRect.dy()};
+	const Point diff = Point(clipRect.dx(), clipRect.dy());
 	// end point for access checking
 	const uint *const dstEnd = _data + _height * _width;
 	assert(dstEnd >= (dst + dstPitch * diff.y + diff.x));
@@ -217,20 +232,160 @@ template <typename SrcPix> void BlitBuffer::_blit(BlitBuffer::BlitInfo &info) {
 		uint *dstRow = dst;
 		// horizontal loop
 		for (int x = 0; x <= diff.x; ++x) {
-			*dstRow = *srcRow;
+			if (Masked) {
+				if (*srcRow != key) {
+					*dstRow = *srcRow;
+				}
+			}
+			else {
+				*dstRow = *srcRow;
+			}
 			// increment pixel
 			++srcRow, ++dstRow;
 		}
 		// increment scanlines
-		src += srcPitch / sizeof(SrcPix), dst += dstPitch;
+		src += srcPitch, dst += dstPitch;
 	}
 }
+
+struct GDICursor {
+
+	GDICursor()
+		: _size(0, 0)
+		, _allocated(0)
+		, _data8(NULL)
+		, _data32(NULL)
+		, _dirty(true)
+		, _offset(0, 0)
+		, _key(0xff)
+		, _visible(true)
+	{
+		memset(_palette, 0xff, sizeof(_palette));
+	}
+
+	~GDICursor() {
+		if (_data8) {
+			delete [] _data8;
+			_data8 = NULL;
+		}
+		if (_data32) {
+			delete [] _data32;
+			_data32 = NULL;
+		}
+	}
+
+	void show(bool visible) {
+		_visible = visible;
+	}
+
+	void setCursor(
+		const void *buf,
+		Point size,
+		Point hotspot,
+		uint32 keycolor,
+		bool dontScale,
+		const Graphics::PixelFormat *format)
+	{
+		_resize(size);
+		assert(_data8 && _allocated >= uint(size.x * size.y));
+		_offset = hotspot;
+		_key = keycolor;
+
+		_dirty = true;
+		const byte *src = (const byte*)buf;
+		const uint elms = _size.x * _size.y;
+		for (uint i = 0; i<elms; ++i) {
+			_data8[i] = src[i];
+		}
+	}
+
+	void setPalette(
+		const byte *colors,
+		uint start,
+		uint num)
+	{
+		// note: palette entries seem to be passed in as RGB byte triplets.
+		for (uint i = 0; i < num; ++i) {
+			const uint palIndex = start + i;
+			assert(palIndex < 256);
+			// pack RGB triplet
+			uint color = 0;
+			color |= colors[0] << 16;
+			color |= colors[1] << 8;
+			color |= colors[2] << 0;
+			// insert into palette
+			_palette[palIndex] = color;
+			colors += 3;
+		}
+		_dirty = true;
+	}
+
+	void blit(Point pos, BlitBuffer & dst) {
+		if (_visible && _data32) {
+			_convert();
+			BlitBuffer::BlitInfo info;
+			info.w = _size.x;
+			info.h = _size.y;
+			info.x = pos.x - _offset.x;
+			info.y = pos.y - _offset.y;
+			info.pitch = _size.x * sizeof(uint);
+			info.inData = _data32;
+			info.mask = true;
+			info.maskKey = _palette[_key & 0xff];
+			dst.blit(info);
+		}
+	}
+
+protected:
+	void _resize(const Point & size) {
+		const size_t elms = size.x * size.y;
+		if (elms > _allocated) {
+			if (_data8) {
+				delete [] _data8;
+			}
+			if (_data32) {
+				delete [] _data32;
+			}
+			_allocated = elms;
+			_data8  = new byte[elms];
+			_data32 = new uint[elms];
+		}
+		_size = size;
+	}
+
+	void _convert() {
+		if (!_dirty) {
+			return;
+		}
+		const uint elms = _size.x * _size.y;
+		if (elms) {
+			assert(_data8 && _data32 && _allocated);
+		}
+		const byte key = _key;
+		for (uint i=0; i<elms; ++i) {
+			const byte pix = _data8[i];
+			const uint rgb = _palette[pix];
+			_data32[i] = rgb;
+		}
+		_dirty = false;
+	}
+
+	Point _size;
+	size_t _allocated;
+	byte *_data8;
+	uint *_data32;
+	bool _dirty;
+	Point _offset;
+	uint _key;
+	uint _palette[256];
+	bool _visible;
+};
 
 // scumm buffer is a buffer in the target format
 struct ScummBuffer {
 
 	ScummBuffer()
-		: _dirty(false)
+		: _dirty(true)
 		, _pix(NULL)
 		, _width(0)
 		, _height(0) {
@@ -307,6 +462,7 @@ struct ScummBuffer {
 			dst += w;
 			index += _width;
 		}
+		// TODO: blit the cursor at this stage!
 	}
 
 	uint width() const { return _width; }
@@ -338,7 +494,7 @@ struct GDIDetail {
 	GDIDetail()
 		: _window(NULL)
 		, _dwExStyle(WS_EX_APPWINDOW | WS_EX_OVERLAPPEDWINDOW)
-		, _dwStyle(WS_CAPTION | WS_OVERLAPPED)
+		, _dwStyle(WS_CAPTION | WS_OVERLAPPED | WS_SYSMENU)
 		, _scale(1)
 		, _activeScreen(NULL) {}
 
@@ -382,7 +538,10 @@ struct GDIDetail {
 		}
 	}
 
+	// pallete based screen buffer
 	ScummBuffer _scummBuffer;
+	// mouse cursor
+	GDICursor _cursor;
 
 protected:
 	static LRESULT CALLBACK windowEventHandler(HWND, UINT, WPARAM, LPARAM);
@@ -391,7 +550,6 @@ protected:
 	LRESULT _windowRedraw();
 	// create a back buffer of a specific size
 	bool _screenCreate(uint w, uint h);
-
 	// up scale ratio
 	uint _scale;
 	// window handle
@@ -493,6 +651,8 @@ bool GDIDetail::windowCreate(uint w, uint h, uint scale) {
 	}
 	static const char *kClassName = "ScummVMClass";
 	static const char *kWndName = "ScummVM";
+	//
+	HCURSOR cursor = LoadCursor(NULL, IDC_CROSS);
 	// create window class
 	HINSTANCE hinstance = GetModuleHandle(NULL);
 	WNDCLASSEXA wndClassEx = {
@@ -503,7 +663,7 @@ bool GDIDetail::windowCreate(uint w, uint h, uint scale) {
 		0,                   // cbWndExtra;
 		hinstance,           // hInstance;
 		NULL,                // hIcon;
-		NULL,                // hCursor;
+		cursor,              // hCursor;
 		NULL,                // hbrBackground;
 		NULL,                // lpszMenuName;
 		(LPCSTR)kClassName,  // lpszClassName;
@@ -615,6 +775,16 @@ bool GDIGraphicsManager::hasFeature(OSystem::Feature f) {
 	// warning("has feature(%u)", (uint)f);
 	// if (f==OSystem::Feature::kFeatureOverlaySupportsAlpha)
 	//     return true;
+
+	using namespace Common;
+
+	switch (f) {
+	case OSystem::kFeatureCursorPalette:
+		return true;
+	default:
+		return false;
+	}
+
 	return false;
 }
 
@@ -643,9 +813,9 @@ int GDIGraphicsManager::getDefaultGraphicsMode() const {
 
 bool GDIGraphicsManager::setGraphicsMode(int mode) {
 	LOG_CALL();
-//	_detail->release();
 	switch (mode) {
 	case 0:
+		// XXX: should this be 320x200 ?
 		_detail->windowCreate(320, 240, 2);
 		return true;
 	default:
@@ -723,6 +893,7 @@ int16 GDIGraphicsManager::getWidth() {
 void GDIGraphicsManager::setPalette(const byte *colors, uint start, uint num) {
 	ScummBuffer &sb = _detail->_scummBuffer;
 	sb.setPalette(colors, start, num);
+	_detail->_cursor.setPalette(colors, start, num);
 }
 
 void GDIGraphicsManager::grabPalette(byte *colors, uint start, uint num) {
@@ -772,6 +943,24 @@ void GDIGraphicsManager::updateScreen() {
 		BlitBuffer &bb = _detail->screen(SCREEN_GAME);
 		sb.render(bb.width(), bb.height(), bb.data());
 		sb._dirty = false;
+#if 1
+		do {
+			POINT mousePos;
+			if (GetCursorPos(&mousePos) == FALSE) {
+				break;
+			}
+			if (ScreenToClient(_detail->windowHandle(), &mousePos) == FALSE) {
+				break;
+			}
+			mousePos.x /= (int)_detail->screenScale();
+			mousePos.y /= (int)_detail->screenScale();
+
+			_detail->_cursor.blit(Point(mousePos.x, mousePos.y), bb);
+			// render over old mouse pointer next time
+			// XXX: optimize with dirty regions!
+			sb._dirty = true;
+		} while (false);
+#endif
 	}
 	_detail->screenInvalidate();
 }
@@ -782,9 +971,9 @@ void GDIGraphicsManager::setShakePos(int shakeOffset) {
 }
 
 void GDIGraphicsManager::setFocusRectangle(const Common::Rect &rect) {
+#if 0
 	const Rect r = {rect.left, rect.top, rect.right, rect.bottom};
 	BlitBuffer &bb = _detail->screen(SCREEN_GAME);
-#if 0
 	bb.rect(r, 0xAABBFF);
 #endif
 }
@@ -837,34 +1026,49 @@ void GDIGraphicsManager::copyRectToOverlay(const void *buf, int pitch, int x,
 }
 
 int16 GDIGraphicsManager::getOverlayHeight() {
+	assert(_detail);
 	BlitBuffer &bb = _detail->screen(SCREEN_OVERLAY);
 	return bb.height();
 }
 
 int16 GDIGraphicsManager::getOverlayWidth() {
+	assert(_detail);
 	BlitBuffer &bb = _detail->screen(SCREEN_OVERLAY);
 	return bb.width();
 }
 
-bool GDIGraphicsManager::showMouse(bool visible) { return !visible; }
+bool GDIGraphicsManager::showMouse(bool visible) {
+	assert(_detail);
+	_detail->_cursor.show(visible);
+	return true;
+}
 
 void GDIGraphicsManager::warpMouse(int x, int y) {
 	// empty
 	LOG_CALL();
 }
 
-void GDIGraphicsManager::setMouseCursor(const void *buf, uint w, uint h,
-										int hotspotX, int hotspotY,
-										uint32 keycolor, bool dontScale,
-										const Graphics::PixelFormat *format) {
-	// TODO: this is likely the cross cursor!
-	LOG_CALL();
+void GDIGraphicsManager::setMouseCursor(
+	const void *buf,
+	uint w, uint h,
+	int hx, int hy,
+	uint32 key,
+	bool dontScale,
+	const Graphics::PixelFormat *format)
+{
+	assert(_detail);
+	_detail->_cursor.setCursor(buf, Point(w, h), Point(hx, hy), key, dontScale, format);
 }
 
-void GDIGraphicsManager::setCursorPalette(const byte *colors, uint start,
-										  uint num) {
-	// empty
-	LOG_CALL();
+void GDIGraphicsManager::setCursorPalette(
+	const byte *colors,
+	uint start,
+	uint num)
+{
+	assert(_detail);
+	_detail->_cursor.setPalette(colors, start, num);
 }
 
-uint GDIGraphicsManager::getScale() const { return _detail->screenScale(); }
+uint GDIGraphicsManager::getScale() const {
+	return _detail->screenScale();
+}
