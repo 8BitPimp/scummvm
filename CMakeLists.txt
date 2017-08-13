@@ -21,10 +21,11 @@ OPTION(ENABLE_SCUMM_7_8 "Enable SCUMM V7 and V8 support" ON)
 
 include_directories(${ScummVM_SOURCE_DIR} ${ScummVM_SOURCE_DIR}/engines)
 
-add_definitions(-DUSE_RGB_COLOR)
-add_definitions(-DUSE_TASKBAR)
+# with this defined the cursor pixel formats I received were really weird
+# add_definitions(-DUSE_RGB_COLOR)
 add_definitions(-DUSE_TRANSLATION)
 add_definitions(-DUSE_DETECTLANG)
+# add_definitions(-DUSE_TASKBAR)
 # add_definitions(-DUSE_HIGHRES)
 # add_definitions(-DUSE_MT32EMU)
 # add_definitions(-DUSE_OPENGL)
