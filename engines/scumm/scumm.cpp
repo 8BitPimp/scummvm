@@ -2160,7 +2160,14 @@ void ScummEngine::waitForTimer(int msec_delay) {
 
 	start_time = _system->getMillis();
 
+	// time we aim to next parseEvents and update screen
+	const uint update_interval = 10;
+	uint next_update = start_time;
+
 	while (!shouldQuit()) {
+		// set time for next update
+		next_update += update_interval;
+
 		_sound->updateCD(); // Loop CD Audio if needed
 		parseEvents();
 
@@ -2168,11 +2175,18 @@ void ScummEngine::waitForTimer(int msec_delay) {
 		if (_townsScreen)
 			_townsScreen->update();
 #endif
-
 		_system->updateScreen();
-		if (_system->getMillis() >= start_time + msec_delay)
+
+		// break out of loop when delay time is reached
+		uint millis = _system->getMillis();
+		if (millis >= start_time + msec_delay)
 			break;
-		_system->delayMillis(10);
+		// yield till next update period
+		while (millis < next_update) {
+			// yield process timeslice
+			_system->delayMillis(0);
+			millis = _system->getMillis();
+		}
 	}
 }
 
