@@ -134,7 +134,7 @@
 		return __builtin_bswap32(a);
 	}
 
-#elif defined(_MSC_VER)
+#elif defined(_MSC_VER) && (_MSC_VER > 1310)
 
 	FORCEINLINE uint32 SWAP_BYTES_32(uint32 a) {
 		return _byteswap_ulong(a);
