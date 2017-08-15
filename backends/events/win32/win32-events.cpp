@@ -1,3 +1,25 @@
+/* ScummVM - Graphic Adventure Engine
+ *
+ * ScummVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the COPYRIGHT
+ * file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
@@ -137,14 +159,12 @@ bool Win32EventSource::handleEvent(tagMSG &msg, Common::Event &event) {
 }
 
 bool Win32EventSource::pollEvent(Common::Event &event) {
-
 	//XXX: this is a little wedged in here, can we clean this up?
 	// call the timer handler reguarly
 	Common::TimerManager *timer = g_system->getTimerManager();
 	assert(timer);
 	DefaultTimerManager *defTimer = static_cast<DefaultTimerManager*>(timer);
 	defTimer->handler();
-
 	// peek event from the process event queue
 	MSG msg;
 	while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -157,7 +177,6 @@ bool Win32EventSource::pollEvent(Common::Event &event) {
 			DispatchMessageA(&msg);
 		}
 	}
-
 	// no event generated
 	return false;
 }
