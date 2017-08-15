@@ -23,10 +23,11 @@
 #ifndef BACKENDS_GRAPHICS_GDI_H
 #define BACKENDS_GRAPHICS_GDI_H
 
+#include "common/events.h"
 #include "backends/graphics/graphics.h"
 #include "graphics/surface.h"
 
-class GDIGraphicsManager : public GraphicsManager {
+class GDIGraphicsManager : public GraphicsManager, public Common::EventObserver {
 public:
 	GDIGraphicsManager();
 	virtual ~GDIGraphicsManager();
@@ -77,7 +78,11 @@ public:
 								const Graphics::PixelFormat *format = NULL);
 	virtual void setCursorPalette(const byte *colors, uint start, uint num);
 
+	// EventObserver interface
+	virtual bool notifyEvent(const Common::Event &event);
+
 	uint getScale() const;
+	void setFullscreenMode(bool enable);
 
 protected:
 	Graphics::Surface _surface;

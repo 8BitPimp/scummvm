@@ -496,7 +496,9 @@ struct GDIDetail {
 		, _dwExStyle(WS_EX_APPWINDOW | WS_EX_OVERLAPPEDWINDOW)
 		, _dwStyle(WS_CAPTION | WS_OVERLAPPED | WS_SYSMENU)
 		, _scale(1)
-		, _activeScreen(NULL) {}
+		, _activeScreen(NULL)
+		, _fullscreen(false)
+	{}
 
 	~GDIDetail() {
 		release();
@@ -538,14 +540,21 @@ struct GDIDetail {
 		}
 	}
 
+	void setFullscreen(bool enable);
+
 	// pallete based screen buffer
 	ScummBuffer _scummBuffer;
 	// mouse cursor
 	GDICursor _cursor;
 
+	bool isFullscreen() const {
+		return _fullscreen;
+	}
+
 protected:
 	static LRESULT CALLBACK windowEventHandler(HWND, UINT, WPARAM, LPARAM);
 
+	bool _fullscreen;
 	// repaint the current window (WM_PAINT)
 	LRESULT _windowRedraw();
 	// create a back buffer of a specific size
@@ -711,6 +720,47 @@ bool GDIDetail::windowCreate(uint w, uint h, uint scale) {
 	return true;
 }
 
+void GDIDetail::setFullscreen(bool enable) {
+	_fullscreen = enable;
+	HWND hwnd = _window;
+	DEVMODE fullscreenSettings;
+	// current display width and height
+	const uint width = _activeScreen->width();
+	const uint height = _activeScreen->height();
+	if (enable) {
+		// get the current display settings
+		if (EnumDisplaySettings(NULL, 0, &fullscreenSettings) == FALSE) {
+			warning("EnumDisplaySettings() failed!");
+			return;
+		}
+		fullscreenSettings.dmPelsWidth = width * _scale;
+		fullscreenSettings.dmPelsHeight = height * _scale;
+		fullscreenSettings.dmBitsPerPel = 32;
+		fullscreenSettings.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL;
+		// set window styles
+		SetWindowLongPtr(hwnd, GWL_EXSTYLE, WS_EX_APPWINDOW | WS_EX_TOPMOST);
+		SetWindowLongPtr(hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+		// move window to upper left
+		SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, width, height, SWP_SHOWWINDOW);
+		// invoke fullscreen
+		if (ChangeDisplaySettings(&fullscreenSettings, CDS_FULLSCREEN) != DISP_CHANGE_SUCCESSFUL) {
+			warning("ChangeDisplaySettings(CDS_FULLSCREEN) failed!");
+			return;
+		}
+		ShowWindow(hwnd, SW_MAXIMIZE);
+	}
+	else {
+		SetWindowLongPtr(hwnd, GWL_EXSTYLE, _dwExStyle);
+		SetWindowLongPtr(hwnd, GWL_STYLE, _dwStyle);
+		if (ChangeDisplaySettings(NULL, CDS_RESET) != DISP_CHANGE_SUCCESSFUL) {
+			warning("ChangeDisplaySettings(CDS_RESET) failed!");
+		}
+		SetWindowPos(hwnd, HWND_NOTOPMOST, 64, 64, 32, 32, SWP_SHOWWINDOW);
+		windowResize(width, height, _scale);
+		ShowWindow(hwnd, SW_RESTORE);
+	}
+}
+
 bool GDIDetail::windowResize(uint w, uint h, uint scale) {
 	assert(w && h);
 	// store scale parameter
@@ -722,7 +772,9 @@ bool GDIDetail::windowResize(uint w, uint h, uint scale) {
 	rect.right = rect.left + (w * scale);
 	rect.bottom = rect.top + (h * scale);
 	// adjust so rect becomes client area
-	if (AdjustWindowRectEx(&rect, _dwStyle, FALSE, _dwExStyle) == FALSE) {
+	const DWORD dwStyle = GetWindowLongA(_window, GWL_STYLE);
+	const DWORD dwExStyle = GetWindowLongA(_window, GWL_EXSTYLE);
+	if (AdjustWindowRectEx(&rect, dwStyle, FALSE, dwExStyle) == FALSE) {
 		return false;
 	}
 	// XXX: this will also move the window by some pixels
@@ -765,6 +817,7 @@ GDIGraphicsManager::GDIGraphicsManager()
 }
 
 GDIGraphicsManager::~GDIGraphicsManager() {
+	setFullscreenMode(false);
 	if (_detail) {
 		delete _detail;
 		_detail = NULL;
@@ -775,27 +828,29 @@ bool GDIGraphicsManager::hasFeature(OSystem::Feature f) {
 	// warning("has feature(%u)", (uint)f);
 	// if (f==OSystem::Feature::kFeatureOverlaySupportsAlpha)
 	//     return true;
-
 	using namespace Common;
-
 	switch (f) {
 	case OSystem::kFeatureCursorPalette:
+	case OSystem::kFeatureFullscreenMode:
 		return true;
 	default:
 		return false;
 	}
-
-	return false;
 }
 
 void GDIGraphicsManager::setFeatureState(OSystem::Feature f, bool enable) {
-	// empty
-	LOG_CALL();
+	switch (f) {
+	case OSystem::kFeatureFullscreenMode:
+		setFullscreenMode(enable);
+		break;
+	}
 }
 
 bool GDIGraphicsManager::getFeatureState(OSystem::Feature f) {
-	// empty
-	LOG_CALL();
+	switch (f) {
+	case OSystem::kFeatureFullscreenMode:
+		return _detail->isFullscreen();
+	}
 	return false;
 }
 
@@ -806,8 +861,6 @@ GDIGraphicsManager::getSupportedGraphicsModes() const {
 }
 
 int GDIGraphicsManager::getDefaultGraphicsMode() const {
-	// empty
-	LOG_CALL();
 	return 0;
 }
 
@@ -1071,4 +1124,17 @@ void GDIGraphicsManager::setCursorPalette(
 
 uint GDIGraphicsManager::getScale() const {
 	return _detail->screenScale();
+}
+
+void GDIGraphicsManager::setFullscreenMode(bool enable) {
+	return _detail->setFullscreen(enable);
+}
+
+bool GDIGraphicsManager::notifyEvent(const Common::Event &event) {
+	if (event.type == Common::EVENT_KEYUP) {
+		if (event.kbd.keycode == Common::KEYCODE_F11) {
+			setFullscreenMode(!_detail->isFullscreen());
+		}
+	}
+	return false /* pass to other observers */;
 }
