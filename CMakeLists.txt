@@ -1011,7 +1011,7 @@ target_link_libraries(scummvm ${SCUMVM_LIBS})
 
 # Libraries
 if (WIN32)
-    target_sources(scummvm PUBLIC ../../dists/scummvm.rc)
+    target_sources(scummvm PUBLIC dists/scummvm.rc)
 endif()
 
 # Engines libraries handling

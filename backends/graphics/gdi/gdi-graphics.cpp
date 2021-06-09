@@ -164,8 +164,8 @@ struct BlitBuffer {
 	}
 
 	void copyTo(void *vDst, uint pitch, uint height) {
-		const uint cpyPitch = Rect::min(pitch, _width * sizeof(uint));
-		const uint cpyHeight = Rect::min(height, _height);
+		const uint cpyPitch = Rect::min<uint>(pitch, _width * sizeof(uint));
+		const uint cpyHeight = Rect::min<uint>(height, _height);
 		const uint *src = _data;
 		byte *dst = (byte *)vDst;
 		for (uint y = 0; y < cpyHeight; ++y) {
@@ -706,7 +706,7 @@ bool GDIDetail::windowCreate(uint w, uint h, uint scale) {
 	// pass class instance to window user data to that the static window proc
 	// can dispatch to the GDIDetail instance.
 	SetLastError(0);
-	if (SetWindowLongPtrA(_window, GWLP_USERDATA, (LONG)this) == 0 &&
+	if (SetWindowLongPtrA(_window, GWLP_USERDATA, (LONG_PTR)this) == 0 &&
 		GetLastError()) {
 		// unable to set window user data
 		return false;
